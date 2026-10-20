@@ -541,8 +541,7 @@ public class NewsfeedController{
 								Group g=ownerGroups.get(-a.ownerID);
 								if(g==null || g.photosState==GroupFeatureState.DISABLED)
 									return false;
-								if(g.accessType!=Group.AccessType.OPEN)
-									return context.getPrivacyController().canUserAccessGroupContent(self.user, g);
+								return g.accessType == Group.AccessType.OPEN || context.getPrivacyController().canUserAccessGroupContent(self.user, g);
 							}
 							return context.getPrivacyController().checkUserPrivacy(self.user, ownerUsers.get(a.ownerID), a.viewPrivacy);
 						})
