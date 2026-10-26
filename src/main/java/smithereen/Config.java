@@ -78,6 +78,9 @@ public class Config{
 
 	public static boolean demoMode;
 	public static boolean privateServer;
+	public static boolean mcpEnabled = true;
+	/** ID of the built-in application that owns personal access tokens for AI agents, 0 until the migration ran */
+	public static long agentAppID;
 	public static List<Integer> demoAddFriends;
 
 	// following fields are kept in the config table in database and some are configurable from /settings/admin
@@ -214,6 +217,7 @@ public class Config{
 		videoTranscodeTimeout=Utils.parseIntOrDefault(props.getProperty("media.video.transcode_timeout"), videoTranscodeTimeout);
 
 		privateServer=Boolean.parseBoolean(props.getProperty("private_server", "false"));
+		mcpEnabled = Boolean.parseBoolean(props.getProperty("mcp.enabled", "true"));
 		demoMode=Boolean.parseBoolean(props.getProperty("demo_mode", "false"));
 		if(demoMode){
 			String addFriends=props.getProperty("demo_mode.add_friends");
@@ -323,6 +327,7 @@ public class Config{
 			mobileCSS=dbValues.get("MobileCSS");
 			applyCSS(commonCSS, desktopCSS, mobileCSS);
 
+			agentAppID = Utils.parseIntOrDefault(dbValues.get("AgentAppID"), 0);
 			userExportCooldownDays=Utils.parseIntOrDefault(dbValues.get("UserExportCooldown"), 7);
 			userExportRetentionDays=Utils.parseIntOrDefault(dbValues.get("UserExportRetention"), 2);
 

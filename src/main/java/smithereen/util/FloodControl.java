@@ -28,6 +28,8 @@ public class FloodControl<K>{
 	public static final FloodControl<Account> PASSWORD_CHECK=FloodControl.ofObjectKey(5, 1, TimeUnit.MINUTES, acc->"account"+acc.id);
 	public static final FloodControl<InetAddress> API_REQUESTS_ANON=FloodControl.ofIPKey(3, 1, TimeUnit.SECONDS);
 	public static final FloodControl<byte[]> API_REQUESTS=FloodControl.ofByteArrayKey(3, 1, TimeUnit.SECONDS);
+	/** Writes through the MCP endpoint, per access token: an agent has no sense of "too chatty" */
+	public static final FloodControl<byte[]> MCP_WRITES = FloodControl.ofByteArrayKey(60, 1, TimeUnit.HOURS);
 	public static final FloodControl<User> POSTS=FloodControl.ofObjectKey(300, 3, TimeUnit.HOURS, u->"user"+u.id);
 	public static final FloodControl<User> GROUP_CREATE=FloodControl.ofObjectKey(10, 1, TimeUnit.HOURS, u->"user"+u.id);
 	public static final FloodControl<InetAddress> LOGIN_HARD1=FloodControl.ofIPKey(1, 1, TimeUnit.SECONDS);

@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 import smithereen.Utils;
 import smithereen.model.objects.Actor;
 import smithereen.model.media.MediaFileRef;
+import smithereen.model.apps.AgentAccessToken;
 import smithereen.model.apps.AppAuthCode;
 import smithereen.model.apps.AppAccessGrant;
 import smithereen.model.apps.AppAccessToken;
@@ -150,16 +151,34 @@ public class AppsStorage{
 	// region Access tokens
 
 	public static void createAccessToken(byte[] id, int accountID, long appID, InetAddress ip, Instant expiresAt, EnumSet<ClientAppPermission> permissions) throws SQLException{
+		createAccessToken(id, accountID, appID, ip, expiresAt, permissions, null);
+	}
+
+	public static void createAccessToken(byte[] id, int accountID, long appID, InetAddress ip, Instant expiresAt, EnumSet<ClientAppPermission> permissions, String name) throws SQLException {
 		new SQLQueryBuilder()
 				.insertInto("api_tokens")
 				.value("id", id)
 				.value("account_id", accountID)
 				.value("app_id", appID)
+				.value("name", name)
 				.value("ip", Utils.serializeInetAddress(ip))
 				.value("user_agent", 0)
 				.value("expires_at", expiresAt)
 				.value("permissions", Utils.serializeEnumSet(permissions))
 				.executeNoResult();
+	}
+
+	/**
+	 * Lists the tokens of one application for one account with everything the Settings page shows, newest first.
+	 */
+	public static List<AgentAccessToken> getAgentAccessTokens(int accountID, long appID) throws SQLException {
+		return new SQLQueryBuilder()
+				.selectFrom("api_tokens")
+				.allColumns()
+				.where("account_id=? AND app_id=?", accountID, appID)
+				.orderBy("created_at DESC")
+				.executeAsStream(AgentAccessToken::fromResultSet)
+				.toList();
 	}
 
 	public static AppAccessToken getAccessToken(byte[] id) throws SQLException{

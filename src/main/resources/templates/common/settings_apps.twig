@@ -19,6 +19,27 @@
 		</ul>
 		{% endif %}
 	</div>
+	<h2>{{ L('settings_agent_tokens') }}</h2>
+	<div class="form">
+		<div class="textByItself">
+			<p>{{ L('settings_agent_tokens_explanation', {'url': mcpURL}) }}</p>
+			{% if not mcpEnabled %}<p>{{ L('settings_agent_tokens_disabled') }}</p>{% endif %}
+		</div>
+		{% if agentTokens is empty %}
+		<div class="emptyState compact">{{ L('settings_agent_tokens_empty') }}</div>
+		{% else %}
+		<ul class="actualList">
+		{% for token in agentTokens %}
+			<li><span>
+				<b>{{ token.name }}</b> &mdash; {% if token.expired %}{{ L('settings_agent_token_expired') }}{% else %}{{ L('settings_agent_token_expires_at', {'date': LD(token.expiresAt)}) }}{% endif %}, {{ L('settings_agent_token_last_used', {'date': LD(token.lastActive), 'ip': token.ip.hostAddress}) }}
+				<span id="agentTokenRevoke{{ token.shortID }}">(<a href="/settings/apps/tokens/{{ token.shortID }}/revoke?csrf={{ csrf }}" data-ajax data-ajax-show="agentTokenRevokeLoader{{ token.shortID }}" data-ajax-hide="agentTokenRevoke{{ token.shortID }}">{{ L('settings_agent_token_revoke') }}</a>)</span>
+				<span class="inlineLoader" id="agentTokenRevokeLoader{{ token.shortID }}" style="display: none"></span>
+			</span></li>
+		{% endfor %}
+		</ul>
+		{% endif %}
+		<div class="marginBefore"><a class="button" href="/settings/apps/tokens/create">{{ L('settings_agent_token_create') }}</a></div>
+	</div>
 	<h2>{{ L('settings_apps_development') }}</h2>
 	<div class="form">
 		<div class="textByItself">

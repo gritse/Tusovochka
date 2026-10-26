@@ -126,6 +126,7 @@ CREATE TABLE `api_tokens` (
   `id` binary(64) NOT NULL,
   `account_id` int unsigned NOT NULL,
   `app_id` bigint unsigned NOT NULL,
+  `name` varchar(64) DEFAULT NULL,
   `last_active` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `ip` binary(16) NOT NULL,
   `user_agent` bigint NOT NULL,

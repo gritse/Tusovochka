@@ -59,6 +59,8 @@ import smithereen.model.UserPrivacySettingKey;
 import smithereen.model.admin.UserRole;
 import smithereen.model.WebDeltaResponse;
 import smithereen.model.apps.AppAccessGrant;
+import smithereen.model.apps.AppAccessToken;
+import smithereen.model.apps.ClientAppPermission;
 import smithereen.model.apps.ClientApp;
 import smithereen.model.feed.FriendsNewsfeedTypeFilter;
 import smithereen.model.filtering.FilterContext;
@@ -1111,9 +1113,133 @@ public class SettingsRoutes{
 				.collect(Collectors.toSet());
 		Map<Long, ClientApp> apps=ctx.getAppsController().getAppsByIDs(needApps);
 		model.with("grants", grants.stream().map(g->apps.get(g.appID())).toList())
-				.with("managed", managedApps.stream().map(apps::get).toList());
+				.with("managed", managedApps.stream().map(apps::get).toList())
+				.with("agentTokens", ctx.getAppsController().getAgentTokens(self))
+				.with("mcpEnabled", Config.mcpEnabled)
+				.with("mcpURL", Config.localURI("/mcp").toString());
 		return model;
 	}
+
+	// region Personal access tokens for AI agents
+
+	private static final List<Integer> AGENT_TOKEN_LIFETIMES_DAYS = List.of(1, 7, 30, 90, 365);
+	private static final int AGENT_TOKEN_DEFAULT_LIFETIME_DAYS = 30;
+	private static final String NEW_AGENT_TOKEN_SESSION_ATTRIBUTE = "newAgentToken";
+
+	/** The scopes a user can give an agent token, in the order the form shows them. */
+	private static final List<ClientAppPermission> AGENT_TOKEN_SCOPES = List.of(
+			ClientAppPermission.NEWSFEED, ClientAppPermission.NOTIFICATIONS,
+			ClientAppPermission.WALL_READ, ClientAppPermission.WALL_WRITE,
+			ClientAppPermission.LIKES_READ, ClientAppPermission.LIKES_WRITE,
+			ClientAppPermission.FRIENDS_READ, ClientAppPermission.FRIENDS_WRITE,
+			ClientAppPermission.GROUPS_READ, ClientAppPermission.GROUPS_WRITE,
+			ClientAppPermission.MESSAGES_READ, ClientAppPermission.MESSAGES_WRITE,
+			ClientAppPermission.PHOTOS_READ, ClientAppPermission.PHOTOS_WRITE,
+			ClientAppPermission.ACCOUNT_WRITE
+	);
+	/** Checked by default: everything that reads, plus writing posts and messages, which is what an agent is usually for. */
+	private static final EnumSet<ClientAppPermission> AGENT_TOKEN_DEFAULT_SCOPES = EnumSet.of(
+			ClientAppPermission.NEWSFEED, ClientAppPermission.NOTIFICATIONS,
+			ClientAppPermission.WALL_READ, ClientAppPermission.WALL_WRITE,
+			ClientAppPermission.LIKES_READ, ClientAppPermission.FRIENDS_READ, ClientAppPermission.GROUPS_READ,
+			ClientAppPermission.MESSAGES_READ, ClientAppPermission.MESSAGES_WRITE, ClientAppPermission.PHOTOS_READ
+	);
+
+	private static String scopeFormName(ClientAppPermission permission) {
+		return "scope_" + permission.getScopeValue().replace(':', '_');
+	}
+
+	private static Object agentTokenForm(Request req, Response resp, EnumSet<ClientAppPermission> checkedScopes, String message) {
+		Lang l = lang(req);
+		List<Map<String, Object>> scopes = new ArrayList<>();
+		for (ClientAppPermission permission : AGENT_TOKEN_SCOPES) {
+			String[] parts = permission.getScopeValue().split(":");
+			String label = l.get("oauth_scope_" + parts[0]);
+			if (parts.length > 1)
+				label += ": " + l.get("settings_agent_scope_" + parts[1]);
+			scopes.add(Map.of("name", scopeFormName(permission), "label", label, "checked", checkedScopes.contains(permission)));
+		}
+		List<Map<String, Object>> lifetimes = new ArrayList<>();
+		for (int days : AGENT_TOKEN_LIFETIMES_DAYS) {
+			lifetimes.add(Map.of("value", days, "label", l.get("X_days", Map.of("count", days)), "selected", days == AGENT_TOKEN_DEFAULT_LIFETIME_DAYS));
+		}
+		return wrapForm(req, resp, "settings_agent_token_form", "/settings/apps/tokens/create", l.get("settings_agent_token_create"), "settings_agent_token_create", "createAgentToken",
+				List.of("name"), null, message, Map.of("scopes", scopes, "lifetimes", lifetimes));
+	}
+
+	public static Object agentTokenCreateForm(Request req, Response resp, Account self, ApplicationContext ctx) {
+		return agentTokenForm(req, resp, AGENT_TOKEN_DEFAULT_SCOPES, null);
+	}
+
+	public static Object agentTokenCreate(Request req, Response resp, Account self, ApplicationContext ctx) {
+		requireQueryParams(req, "name", "expires", "password");
+		Lang l = lang(req);
+		EnumSet<ClientAppPermission> scopes = EnumSet.noneOf(ClientAppPermission.class);
+		for (ClientAppPermission permission : AGENT_TOKEN_SCOPES) {
+			if (req.queryParams(scopeFormName(permission)) != null)
+				scopes.add(permission);
+		}
+		// A write scope implies the matching read scope, as in the OAuth flow
+		for (ClientAppPermission permission : EnumSet.copyOf(scopes)) {
+			String value = permission.getScopeValue();
+			if (value.endsWith(":write"))
+				scopes.addAll(ApiRoutes.parseScope(value.substring(0, value.indexOf(':'))));
+		}
+		String name = req.queryParams("name").trim();
+		if (name.isEmpty() || name.length() > 64)
+			return agentTokenForm(req, resp, scopes, l.get("err_agent_token_name"));
+		int days = safeParseInt(req.queryParams("expires"));
+		if (!AGENT_TOKEN_LIFETIMES_DAYS.contains(days))
+			days = AGENT_TOKEN_DEFAULT_LIFETIME_DAYS;
+		if (scopes.isEmpty())
+			return agentTokenForm(req, resp, scopes, l.get("err_agent_token_no_scopes"));
+		if (!ctx.getUsersController().checkPassword(self, req.queryParams("password")))
+			return agentTokenForm(req, resp, scopes, l.get("err_old_password_incorrect"));
+		AppAccessToken token = ctx.getAppsController().createAgentToken(self, name, scopes, Instant.now().plus(days, ChronoUnit.DAYS), req);
+		// The token string must not appear in a URL, so it travels to the result page through the session
+		req.session().attribute(NEW_AGENT_TOKEN_SESSION_ATTRIBUTE, token.getEncodedID());
+		return ajaxAwareRedirect(req, resp, "/settings/apps/tokens/created");
+	}
+
+	public static Object agentTokenCreated(Request req, Response resp, Account self, ApplicationContext ctx) {
+		String token = req.session().attribute(NEW_AGENT_TOKEN_SESSION_ATTRIBUTE);
+		if (token == null) {
+			resp.redirect("/settings/apps");
+			return "";
+		}
+		req.session().removeAttribute(NEW_AGENT_TOKEN_SESSION_ATTRIBUTE);
+		Lang l = lang(req);
+		String mcpURL = Config.localURI("/mcp").toString();
+		String mcpConfig = """
+				{
+				  "mcpServers": {
+				    "tusovochka": {
+				      "type": "http",
+				      "url": "%s",
+				      "headers": { "Authorization": "Bearer ${TUSOVOCHKA_TOKEN}" }
+				    }
+				  }
+				}""".formatted(mcpURL);
+		return new RenderedTemplateResponse("settings_agent_token_created", req)
+				.with("token", token)
+				.with("mcpURL", mcpURL)
+				.with("mcpConfig", mcpConfig)
+				.pageTitle(l.get("settings_agent_token_created_title"))
+				.mobileToolbarTitle(l.get("settings"));
+	}
+
+	public static Object agentTokenRevoke(Request req, Response resp, Account self, ApplicationContext ctx) {
+		int id = safeParseInt(req.params(":id"));
+		ctx.getAppsController().revokeAgentToken(self, id);
+		if (isAjax(req)) {
+			return new WebDeltaResponse(resp)
+					.setContent("agentTokenRevoke" + id, "<span class=\"grayText\">— " + lang(req).get("settings_agent_token_revoked") + "</span>");
+		}
+		resp.redirect(back(req));
+		return "";
+	}
+
+	// endregion
 
 	public static Object appsRevokeAccess(Request req, Response resp, Account self, ApplicationContext ctx){
 		long id=safeParseInt(req.params(":id"));

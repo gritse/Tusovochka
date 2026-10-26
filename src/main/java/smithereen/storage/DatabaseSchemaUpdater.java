@@ -42,7 +42,7 @@ import smithereen.util.Passwords;
 import smithereen.util.XTEA;
 
 public class DatabaseSchemaUpdater{
-	public static final int SCHEMA_VERSION=94;
+	public static final int SCHEMA_VERSION=95;
 	private static final Logger LOG=LoggerFactory.getLogger(DatabaseSchemaUpdater.class);
 
 	/**
@@ -102,6 +102,7 @@ public class DatabaseSchemaUpdater{
 						RETURN CONCAT(REPLACE(REPLACE(REPLACE(p, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_'), '%');""");
 				createMediaRefCountTriggers(conn);
 				insertDefaultRoles(conn);
+				insertAgentApp(conn);
 			}
 		}else{
 			for(int i=Config.dbSchemaVersion+1;i<=SCHEMA_VERSION;i++){
@@ -1335,7 +1336,34 @@ public class DatabaseSchemaUpdater{
 						  CONSTRAINT `media_processing_jobs_ibfk_1` FOREIGN KEY (`file_id`) REFERENCES `media_files` (`id`) ON DELETE CASCADE
 						) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""");
 			}
+			case 95 -> {
+				// Personal access tokens for AI agents: a label per token, and a built-in application that owns them
+				conn.createStatement().execute("ALTER TABLE `api_tokens` ADD `name` varchar(64) DEFAULT NULL AFTER `app_id`");
+				insertAgentApp(conn);
+			}
 		}
+	}
+
+	/**
+	 * Creates the built-in application that personal access tokens for AI agents belong to (see
+	 * {@link smithereen.controllers.AppsController#getAgentApp()}). Its username can not be registered by a user,
+	 * and its ID is kept in the config table because an existing database may already have apps.
+	 */
+	private static void insertAgentApp(DatabaseConnection conn) throws SQLException {
+		long id = new SQLQueryBuilder(conn)
+				.insertInto("api_applications")
+				.value("username", "agents")
+				.value("type", 0)
+				.value("name", "AI agents")
+				.value("description", "Personal access tokens created in Settings for AI agents acting on behalf of their owners")
+				.executeAndGetIDLong();
+		new SQLQueryBuilder(conn)
+				.insertInto("config")
+				.value("key", "AgentAppID")
+				.value("value", String.valueOf(id))
+				.onDuplicateKeyUpdate()
+				.executeNoResult();
+		Config.agentAppID = id;
 	}
 
 	private static void migratePasswordsToSaltedHashes(DatabaseConnection conn) throws SQLException{

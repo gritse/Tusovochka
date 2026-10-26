@@ -78,6 +78,7 @@ import smithereen.routes.NotifierWebSocket;
 import smithereen.routes.PhotosRoutes;
 import smithereen.routes.PostRoutes;
 import smithereen.routes.ProfileRoutes;
+import smithereen.mcp.McpRoutes;
 import smithereen.routes.SessionRoutes;
 import smithereen.routes.SettingsRoutes;
 import smithereen.routes.SystemRoutes;
@@ -202,7 +203,7 @@ public class SmithereenApplication{
 		before((request, response) -> {
 			request.attribute("context", context);
 
-			if(request.pathInfo().startsWith("/api/"))
+			if(request.pathInfo().startsWith("/api/") || request.pathInfo().equals("/mcp"))
 				return;
 			Session session=request.session(false);
 			if(session==null || session.attribute("info")==null){
@@ -375,6 +376,12 @@ public class SmithereenApplication{
 			postWithCSRF("/requestExport", SettingsRoutes::requestDataExport);
 			path("/apps", ()->{
 				getLoggedIn("", SettingsRoutes::apps);
+				path("/tokens", () -> {
+					getLoggedIn("/create", SettingsRoutes::agentTokenCreateForm);
+					postWithCSRF("/create", SettingsRoutes::agentTokenCreate);
+					getLoggedIn("/created", SettingsRoutes::agentTokenCreated);
+					getWithCSRF("/:id/revoke", SettingsRoutes::agentTokenRevoke);
+				});
 				getWithCSRF("/:id/revoke", SettingsRoutes::appsRevokeAccess);
 			});
 
@@ -882,6 +889,12 @@ public class SmithereenApplication{
 			post("/token", ApiRoutes::oauthToken);
 			postWithCSRF("/doAuthorize", ApiRoutes::oauthDoAuthorize);
 		});
+		// The MCP endpoint for AI agents, see docs/mcp-server-spec.md. Authenticates with the same tokens as the API.
+		path("/mcp", () -> {
+			post("", McpRoutes::post);
+			get("", McpRoutes::methodNotAllowed);
+			delete("", McpRoutes::methodNotAllowed);
+		});
 
 		get("/healthz", (req, resp)->"");
 
@@ -1181,7 +1194,7 @@ public class SmithereenApplication{
 	}
 
 	private static boolean isAllowedForAnonymousUsers(String path){
-		if(path.startsWith("/account/") || path.startsWith("/api/") || path.startsWith("/res/"))
+		if(path.startsWith("/account/") || path.startsWith("/api/") || path.startsWith("/res/") || path.equals("/mcp"))
 			return true;
 		return Set.of(
 				"/",

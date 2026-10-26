@@ -1,6 +1,6 @@
 # MCP server for Tusovochka: design spec
 
-Status: proposal, nothing implemented yet. Date: 2026-10-21.
+Status: phase 1 implemented (tokens in Settings, `/mcp` endpoint, 53 tools, unit tests, `dev/mcp-smoke.sh`). Written 2026-10-21, decisions settled 2026-10-26.
 
 Goal: let an AI agent act on behalf of a user and do what that user can do in the web UI: read the news feed,
 replies and notifications, write wall posts and comments, like, add friends, join and post to groups, read and

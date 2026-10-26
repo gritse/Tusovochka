@@ -94,7 +94,20 @@ It needs a `config.properties` and `/var/www/smithereen/s` on the host, see the 
 user with `docker compose exec web smithereen-init-admin`. For quick UI checks the local run above is faster
 because `mvn package` is incremental.
 
-## 3. Check a feature in the browser
+## 3. Check the MCP endpoint
+
+Log in as any user, create a token in Settings → Applications → "Access tokens for AI agents", then run the smoke
+test against the running server:
+
+```sh
+dev/mcp-smoke.sh <token>                    # transport checks, then a post, a comment and their deletion
+```
+
+With Claude Code installed, `claude mcp add --transport http tusovochka http://127.0.0.1:4567/mcp --header "Authorization: Bearer <token>"`
+followed by `claude mcp list` shows whether the real client connects, and `claude -p "..."` with
+`--allowedTools "mcp__tusovochka__*"` runs an agent against it.
+
+## 4. Check a feature in the browser
 
 Open `http://localhost:4567`, log in as one of the users above. Useful pages:
 

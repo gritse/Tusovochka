@@ -97,6 +97,29 @@ IMGPROXY_ALLOWED_SOURCES=local://,https://<your S3 hostname or alias host>/
 
 The server exposes a JSON API for third-party applications under `/api/method/<name>` with OAuth authorization. Applications are registered in the "Applications" tab of the user settings. The API is inherited from Smithereen, and [its documentation](https://smithereen.software/docs/api) still applies, except for anything that mentions remote servers or federation.
 
+## Using with AI agents (MCP)
+
+The server is also an [MCP](https://modelcontextprotocol.io) server at `https://<your domain>/mcp`, so an AI agent such as Claude Code or one built on the Claude Agent SDK can act on behalf of a user: read the news feed and notifications, post and comment, like, manage friends and groups, and read and send private messages. The tools are thin wrappers over the JSON API, so the same privacy rules, scopes and rate limits apply. The design is described in [docs/mcp-server-spec.md](docs/mcp-server-spec.md).
+
+To let an agent use your account:
+
+1. Open Settings → Applications → "Access tokens for AI agents" and create a token. Choose a label, how long it stays valid (1 day to 1 year) and what it may do: by default it can read everything and write posts, comments and private messages. The token is shown once; the same page shows the ready-to-paste configuration.
+2. Put the token into an environment variable where the agent runs, and point the agent at the endpoint. For Claude Code, this is a `.mcp.json` in the project (or `claude mcp add --transport http tusovochka https://<your domain>/mcp --header "Authorization: Bearer <token>"`):
+   ```json
+   {
+     "mcpServers": {
+       "tusovochka": {
+         "type": "http",
+         "url": "https://<your domain>/mcp",
+         "headers": { "Authorization": "Bearer ${TUSOVOCHKA_TOKEN}" }
+       }
+     }
+   }
+   ```
+3. Revoke the token on the same settings page when it is no longer needed. Changing your password or ending all other sessions revokes it too.
+
+Notes for server owners: the endpoint accepts the token only in the `Authorization` header, refuses requests with a foreign `Origin`, never streams (no SSE, no sessions), and limits each token to 3 requests per second and 60 writes per hour. On a members-only server (`private_server=true`) it works the same, because a token always identifies a member. Set `mcp.enabled=false` in `config.properties` to turn it off. The agent-facing tools never include administration or moderation.
+
 ## Contributing
 
 Issues and pull requests are welcome in this repository. Please keep the scope in mind: this fork will not add federation back, and it keeps the upstream philosophy of a network you use to stay in touch with people you know, without hashtags, public feeds or global search.

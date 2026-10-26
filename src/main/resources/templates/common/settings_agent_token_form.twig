@@ -1,0 +1,10 @@
+{% import "forms" as form %}
+<div class="settingsInfo extraMarginBottom">{{ L('settings_agent_token_form_explanation') }}</div>
+{{ form.start("createAgentToken", createAgentTokenMessage) }}
+	{{ form.textInput('name', L('settings_agent_token_name'), name, {'required': true, 'maxlength': 64}) }}
+	{{ form.select('expires', L('settings_agent_token_expires'), lifetimes, {}) }}
+	{% for scope in scopes %}
+	{{ form.checkBox(scope.name, loop.first ? L('settings_agent_token_scopes') : '', scope.label, scope.checked, {}) }}
+	{% endfor %}
+	{{ form.textInput('password', L('password'), '', {'type': 'password', 'required': true}) }}
+{{ form.end() }}

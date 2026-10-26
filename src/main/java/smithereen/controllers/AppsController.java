@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -27,13 +28,16 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import smithereen.ApplicationContext;
+import smithereen.Config;
 import smithereen.LruCache;
 import smithereen.Utils;
 import smithereen.model.media.MediaFileRef;
 import smithereen.exceptions.InternalServerErrorException;
+import smithereen.exceptions.InvalidAccessTokenException;
 import smithereen.exceptions.ObjectNotFoundException;
 import smithereen.model.Account;
 import smithereen.model.User;
+import smithereen.model.apps.AgentAccessToken;
 import smithereen.model.apps.AppAuthCode;
 import smithereen.model.apps.AppAccessGrant;
 import smithereen.model.apps.AppAccessToken;
@@ -216,6 +220,101 @@ public class AppsController{
 
 	// endregion
 	// region Access tokens
+
+	/**
+	 * Resolves a bearer token string as sent by an API or MCP client to the token and the account it belongs to,
+	 * checking that it exists, has not expired and that the account is still allowed to act. Also records the use.
+	 *
+	 * @throws InvalidAccessTokenException with a message that is safe to show to the caller
+	 */
+	public AuthenticatedToken authenticateToken(String encodedToken, Request req) {
+		byte[] tokenID;
+		try {
+			tokenID = Base64.getUrlDecoder().decode(encodedToken);
+		} catch (IllegalArgumentException x) {
+			throw new InvalidAccessTokenException("invalid access token");
+		}
+		if (tokenID.length != 64)
+			throw new InvalidAccessTokenException("invalid access token");
+		AppAccessToken token = getAccessTokenOrNull(tokenID);
+		if (token == null)
+			throw new InvalidAccessTokenException("invalid access token");
+		if (token.expiresAt() != null && token.expiresAt().isBefore(Instant.now()))
+			throw new InvalidAccessTokenException("access token has expired");
+		Account account;
+		try {
+			account = context.getUsersController().getAccountOrThrow(token.accountID());
+		} catch (ObjectNotFoundException x) {
+			throw new InvalidAccessTokenException("invalid access token");
+		}
+		// Suspended, frozen, deactivated and unconfirmed accounts must not keep working through previously issued tokens
+		if (!account.isActive())
+			throw new InvalidAccessTokenException("account is not active");
+		updateAccessTokenLastAccess(token, Utils.getRequestIP(req), Objects.requireNonNullElse(req.userAgent(), ""));
+		return new AuthenticatedToken(token, account);
+	}
+
+	public record AuthenticatedToken(AppAccessToken token, Account account) {}
+
+	// endregion
+	// region Personal access tokens for AI agents
+
+	/**
+	 * The built-in application that personal access tokens created in Settings belong to. It is inserted by the
+	 * schema migration, so it exists on every database that runs this code.
+	 */
+	public ClientApp getAgentApp() {
+		if (Config.agentAppID == 0)
+			throw new IllegalStateException("The agent application was not created, the database schema is out of date");
+		return getAppByID(Config.agentAppID);
+	}
+
+	public boolean isAgentToken(AppAccessToken token) {
+		return token != null && Config.agentAppID != 0 && token.appID() == Config.agentAppID;
+	}
+
+	public AppAccessToken createAgentToken(Account account, String name, EnumSet<ClientAppPermission> permissions, Instant expiresAt, Request req) {
+		Objects.requireNonNull(expiresAt, "agent tokens always expire");
+		ClientApp app = getAgentApp();
+		try {
+			byte[] id = new byte[64];
+			srand.nextBytes(id);
+			AppsStorage.createAccessToken(id, account.id, app.id, Utils.getRequestIP(req), expiresAt, permissions, name);
+			AppAccessToken token = new AppAccessToken(id, account.id, app.id, expiresAt, permissions);
+			accessTokenCache.put(new ByteArrayMapKey(id), token);
+			return token;
+		} catch (SQLException x) {
+			throw new InternalServerErrorException(x);
+		}
+	}
+
+	public List<AgentAccessToken> getAgentTokens(Account account) {
+		if (Config.agentAppID == 0)
+			return List.of();
+		try {
+			return AppsStorage.getAgentAccessTokens(account.id, Config.agentAppID);
+		} catch (SQLException x) {
+			throw new InternalServerErrorException(x);
+		}
+	}
+
+	/**
+	 * Revokes one of the account's own agent tokens by the short ID shown on the Settings page.
+	 *
+	 * @throws ObjectNotFoundException when the account has no such token
+	 */
+	public void revokeAgentToken(Account account, int shortID) {
+		for (AgentAccessToken token : getAgentTokens(account)) {
+			if (token.shortID() == shortID) {
+				revokeAccessToken(token.fullID());
+				return;
+			}
+		}
+		throw new ObjectNotFoundException();
+	}
+
+	// endregion
+	// region Access tokens (continued)
 
 	public AppAccessToken createAccessToken(Account account, ClientApp app, EnumSet<ClientAppPermission> permissions, Request req){
 		try{

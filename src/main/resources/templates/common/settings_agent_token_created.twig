@@ -1,0 +1,15 @@
+{% extends "page" %}
+{% block content %}
+{% include "settings_tabbar" with {'tab': 'apps'} %}
+<div class="singleColumn gray narrowForms">
+	<h2>{{ L('settings_agent_token_created_title') }}</h2>
+	<div class="form">
+		<div class="textByItself"><p>{{ L('settings_agent_token_created_explanation') }}</p></div>
+		<pre style="white-space: pre-wrap; word-break: break-all;"><code id="agentToken">{{ token }}</code></pre>
+		<div class="textByItself"><a href="#" onclick="copyText(document.getElementById('agentToken').textContent, '{{ L('settings_agent_token_copied') | forceEscape }}'); return false;">{{ L('settings_agent_token_copy') }}</a></div>
+		<div class="textByItself"><p>{{ L('settings_agent_token_config_explanation') }}</p></div>
+		<pre style="white-space: pre-wrap;"><code>{{ mcpConfig }}</code></pre>
+		<div class="marginBefore"><a class="button" href="/settings/apps">{{ L('settings_agent_token_done') }}</a></div>
+	</div>
+</div>
+{% endblock %}

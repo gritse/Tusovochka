@@ -39,6 +39,7 @@ import javax.imageio.ImageIO;
 
 import smithereen.ApplicationContext;
 import smithereen.Config;
+import smithereen.controllers.AppsController;
 import smithereen.media.ProcessingOptions;
 import smithereen.model.media.MediaFileRef;
 import smithereen.api.ApiCallContext;
@@ -52,6 +53,7 @@ import smithereen.api.model.ApiResponse;
 import smithereen.api.model.ExecuteErrorsApiResponse;
 import smithereen.exceptions.BadRequestException;
 import smithereen.exceptions.FloodControlViolationException;
+import smithereen.exceptions.InvalidAccessTokenException;
 import smithereen.exceptions.ObjectNotFoundException;
 import smithereen.exceptions.UserActionNotAllowedException;
 import smithereen.exceptions.UserErrorException;
@@ -386,7 +388,7 @@ public class ApiRoutes{
 		return "";
 	}
 
-	private static EnumSet<ClientAppPermission> parseScope(String scope){
+	public static EnumSet<ClientAppPermission> parseScope(String scope){
 		EnumSet<ClientAppPermission> permissions=EnumSet.noneOf(ClientAppPermission.class);
 		if(StringUtils.isNotEmpty(scope)){
 			for(String s:scope.split(" +")){
@@ -487,22 +489,13 @@ public class ApiRoutes{
 			}
 			byte[] tokenID=null;
 			if(StringUtils.isNotEmpty(token)){
-				try{
-					tokenID=Base64.getUrlDecoder().decode(token);
-					if(tokenID.length!=64)
-						throw new IllegalArgumentException();
-					accessToken=ctx.getAppsController().getAccessTokenOrNull(tokenID);
-					if(accessToken==null)
-						throw new IllegalArgumentException();
-					if(accessToken.expiresAt()!=null && accessToken.expiresAt().isBefore(Instant.now()))
-						throw new ApiErrorException(new ApiError(ApiErrorType.USER_AUTH_FAILED, "access token has expired", params));
-					self=ctx.getUsersController().getAccountOrThrow(accessToken.accountID());
-					// Suspended, frozen, deactivated, moved and unconfirmed accounts must not keep working through previously issued tokens
-					if(!self.isActive())
-						throw new ApiErrorException(new ApiError(ApiErrorType.USER_AUTH_FAILED, "account is not active", params));
-					ctx.getAppsController().updateAccessTokenLastAccess(accessToken, getRequestIP(req), Objects.requireNonNullElse(req.userAgent(), ""));
-				}catch(IllegalArgumentException x){
-					throw new ApiErrorException(new ApiError(ApiErrorType.USER_AUTH_FAILED, "invalid access token", params));
+				try {
+					AppsController.AuthenticatedToken auth = ctx.getAppsController().authenticateToken(token, req);
+					accessToken = auth.token();
+					self = auth.account();
+					tokenID = accessToken.id();
+				} catch (InvalidAccessTokenException x) {
+					throw new ApiErrorException(new ApiError(ApiErrorType.USER_AUTH_FAILED, x.getMessage(), params));
 				}
 			}
 			ApiCallContext actx=new ApiCallContext(accessToken, self, params, req, versionMajor, versionMinor, self==null ? null : ctx.getUsersController().getUserPermissions(self));
