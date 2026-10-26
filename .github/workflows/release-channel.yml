@@ -1,0 +1,43 @@
+name: Release the Claude Code channel
+
+# Pushing a tag like channel-v0.1.0 packs channel/ with npm pack and attaches the tarball to a GitHub release of that
+# tag, so it can be run with npx straight from the release URL (see channel/README.md). The version in the tag must
+# match channel/package.json. Server builds ignore these tags (.mvn/maven-git-versioning-extension.xml).
+on:
+    push:
+        tags:
+            - channel-v*
+
+permissions:
+    contents: write
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+            - name: Check the version
+              working-directory: channel
+              run: |
+                  version=$(node -p 'require("./package.json").version')
+                  if [ "channel-v$version" != "$GITHUB_REF_NAME" ]; then
+                      echo "::error::Tag $GITHUB_REF_NAME does not match version $version in channel/package.json"
+                      exit 1
+                  fi
+                  echo "VERSION=$version" >> "$GITHUB_ENV"
+
+            - name: Pack
+              working-directory: channel
+              run: npm pack
+
+            - name: Create the release
+              working-directory: channel
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  url="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/tusovochka-channel-$VERSION.tgz"
+                  gh release create "$GITHUB_REF_NAME" "tusovochka-channel-$VERSION.tgz" \
+                      --title "Claude Code channel $VERSION" --latest=false \
+                      --notes "Run with \`npx -y $url\`. Setup: [channel/README.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/channel/README.md)."

@@ -28,11 +28,8 @@ Tusovochka ──/mcp/events (WebSocket)──► tusovochka-channel.mjs ──s
 1. Create an agent token in Settings → Applications → "Access tokens for AI agents". It needs the
    `notifications` scope for the stream, `messages:read` to receive private messages, and the write scopes for
    whatever Claude should be able to answer with. Revoking the token ends the stream.
-2. Install the bridge's one dependency:
-   ```sh
-   cd channel && npm install
-   ```
-3. Add both servers to the `.mcp.json` of the project you run Claude in, with the absolute path to the bridge:
+2. Add both servers to the `.mcp.json` of the project you run Claude in. The bridge runs with `npx` straight from
+   its [GitHub release](https://github.com/gritse/Tusovochka/releases); nothing to clone or install:
    ```json
    {
      "mcpServers": {
@@ -42,14 +39,16 @@ Tusovochka ──/mcp/events (WebSocket)──► tusovochka-channel.mjs ──s
          "headers": { "Authorization": "Bearer ${TUSOVOCHKA_TOKEN}" }
        },
        "tusovochka-events": {
-         "command": "node",
-         "args": ["/path/to/Tusovochka/channel/tusovochka-channel.mjs"],
+         "command": "npx",
+         "args": ["-y", "https://github.com/gritse/Tusovochka/releases/download/channel-v0.1.0/tusovochka-channel-0.1.0.tgz"],
          "env": { "TUSOVOCHKA_URL": "https://<your domain>", "TUSOVOCHKA_TOKEN": "${TUSOVOCHKA_TOKEN}" }
        }
      }
    }
    ```
-4. Start Claude Code with the channel enabled:
+   To update, change the version in the URL (both places) to the newest `channel-v…` release. From a checkout
+   instead, run `npm install` in `channel/` and use `"command": "node", "args": ["/path/to/Tusovochka/channel/tusovochka-channel.mjs"]`.
+3. Start Claude Code with the channel enabled:
    ```sh
    export TUSOVOCHKA_TOKEN=<token>
    claude --dangerously-load-development-channels server:tusovochka-events
@@ -87,3 +86,10 @@ for a missing or invalid token, 403 without the `notifications` scope or with a 
 `{"type":"event","event":{…}}` per notification; the event object holds `summary`, `text` and the attributes above.
 The client must send something (any text) at least every 90 seconds; the bridge sends `ping` every 30. When the
 token is revoked or expires, the server closes the stream with code 4001 at the next event, and the bridge stops.
+
+## Releasing
+
+Bump `version` in `channel/package.json`, commit, and push a tag `channel-v<version>`, e.g. `channel-v0.2.0`. The
+`release-channel.yml` workflow packs `channel/` and attaches `tusovochka-channel-<version>.tgz` to a GitHub release of
+that tag. Then update the version in the `.mcp.json` example above. Server versions only come from numeric tags, so
+these tags do not affect the server build.

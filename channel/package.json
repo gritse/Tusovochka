@@ -2,9 +2,19 @@
 	"name": "tusovochka-channel",
 	"version": "0.1.0",
 	"description": "Claude Code channel that pushes Tusovochka notifications into a session",
-	"private": true,
+	"license": "Unlicense",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/gritse/Tusovochka.git",
+		"directory": "channel"
+	},
 	"type": "module",
-	"bin": "tusovochka-channel.mjs",
+	"bin": {
+		"tusovochka-channel": "tusovochka-channel.mjs"
+	},
+	"files": [
+		"tusovochka-channel.mjs"
+	],
 	"engines": {
 		"node": ">=22"
 	},

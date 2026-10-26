@@ -2,9 +2,10 @@
 			   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 			   xsi:schemaLocation="https://github.com/qoomon/maven-git-versioning-extension https://qoomon.github.io/maven-git-versioning-extension/configuration-9.4.0.xsd">
 
+	<!-- Only numeric tags (1.0.3) are server versions; others, like the channel-v0.1.0 releases of channel/, are ignored -->
 	<refs considerTagsOnBranches="true">
 		<ref type="tag">
-			<pattern>.+</pattern>
+			<pattern><![CDATA[\d+\.\d+.*]]></pattern>
 			<version>${ref}</version>
 			<userProperties>
 				<gitVersion>${ref}</gitVersion>
@@ -13,6 +14,7 @@
 
 		<ref type="branch">
 			<pattern>master</pattern>
+			<describeTagPattern><![CDATA[\d+\.\d+.*]]></describeTagPattern>
 			<version>${describe.tag}-${describe.distance}+${commit.short}</version>
 			<userProperties>
 				<gitVersion>${describe.tag}-${describe.distance}+${commit.short}</gitVersion>
@@ -21,6 +23,7 @@
 
 		<ref type="branch">
 			<describeTagFirstParent>false</describeTagFirstParent>
+			<describeTagPattern><![CDATA[\d+\.\d+.*]]></describeTagPattern>
 			<pattern>.+</pattern>
 			<version>${describe.tag}-${ref}.${describe.distance}+${commit.short}</version>
 			<userProperties>
@@ -31,6 +34,7 @@
 
 	<rev>
 		<describeTagFirstParent>false</describeTagFirstParent>
+		<describeTagPattern><![CDATA[\d+\.\d+.*]]></describeTagPattern>
 		<version>${describe.tag}-${ref}.${describe.distance}+${commit.short}</version>
 		<userProperties>
 			<gitVersion>${describe.tag}-${ref}.${describe.distance}+${commit.short}</gitVersion>
