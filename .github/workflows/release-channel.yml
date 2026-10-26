@@ -1,18 +1,26 @@
 name: Release the Claude Code channel
 
-# Pushing a tag like channel-v0.1.0 packs channel/ with npm pack and attaches the tarball to a GitHub release of that
-# tag, so it can be run with npx straight from the release URL (see channel/README.md). The version in the tag must
-# match channel/package.json. Server builds ignore these tags (.mvn/maven-git-versioning-extension.xml).
+# Pushing a tag like channel-v0.1.0, or publishing a release with such a tag in the web UI, packs channel/ with npm pack
+# and attaches the tarball to the GitHub release of that tag (created if it does not exist yet), so it can be run with
+# npx straight from the release URL (see channel/README.md). The version in the tag must match channel/package.json.
+# Server builds ignore these tags (.mvn/maven-git-versioning-extension.xml).
 on:
     push:
         tags:
             - channel-v*
+    release:
+        types: [published]
 
 permissions:
     contents: write
 
+# A release made in the web UI also creates its tag, so both events can fire for one release: run them one at a time
+concurrency:
+    group: release-channel-${{ github.ref_name }}
+
 jobs:
     release:
+        if: startsWith(github.ref_name, 'channel-v')
         runs-on: ubuntu-latest
         steps:
             - name: Check out
@@ -32,12 +40,17 @@ jobs:
               working-directory: channel
               run: npm pack
 
-            - name: Create the release
+            - name: Attach the tarball to the release
               working-directory: channel
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  url="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/tusovochka-channel-$VERSION.tgz"
-                  gh release create "$GITHUB_REF_NAME" "tusovochka-channel-$VERSION.tgz" \
-                      --title "Claude Code channel $VERSION" --latest=false \
-                      --notes "Run with \`npx -y $url\`. Setup: [channel/README.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/channel/README.md)."
+                  file="tusovochka-channel-$VERSION.tgz"
+                  if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+                      gh release upload "$GITHUB_REF_NAME" "$file" --clobber
+                  else
+                      url="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$file"
+                      gh release create "$GITHUB_REF_NAME" "$file" \
+                          --title "Claude Code channel $VERSION" --latest=false \
+                          --notes "Run with \`npx -y $url\`. Setup: [channel/README.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/channel/README.md)."
+                  fi
