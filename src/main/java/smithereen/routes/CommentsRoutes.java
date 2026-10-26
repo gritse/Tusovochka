@@ -26,6 +26,7 @@ import smithereen.exceptions.UserActionNotAllowedException;
 import smithereen.lang.Lang;
 import smithereen.model.Account;
 import smithereen.model.CommentViewType;
+import smithereen.model.Group;
 import smithereen.model.LikeableContentObject;
 import smithereen.model.ObfuscatedObjectIDType;
 import smithereen.model.PaginatedList;
@@ -42,6 +43,7 @@ import smithereen.model.media.MediaFileUploadPurpose;
 import smithereen.model.media.PhotoViewerInlineData;
 import smithereen.model.notifications.Notification;
 import smithereen.model.photos.Photo;
+import smithereen.model.photos.PhotoAlbum;
 import smithereen.model.viewmodel.CommentViewModel;
 import smithereen.storage.utils.Pair;
 import smithereen.templates.RenderedTemplateResponse;
@@ -64,6 +66,21 @@ public class CommentsRoutes{
 			}
 			case "topic" -> ctx.getBoardController().getTopic(self==null ? null : self.user, XTEA.decodeObjectID(parentID, ObfuscatedObjectIDType.BOARD_TOPIC));
 			default -> throw new BadRequestException();
+		};
+	}
+
+	// A photo's owner may be a group (negative ownerID), so it can't be looked up as a user
+	private static boolean canComment(ApplicationContext ctx, @Nullable Account self, CommentableContentObject parent) {
+		return switch (parent) {
+			case Photo p -> {
+				PhotoAlbum album = ctx.getPhotosController().getAlbumIgnoringPrivacy(p.albumID);
+				yield switch (ctx.getWallController().getContentAuthorAndOwner(p).owner()) {
+					case User u -> ctx.getPrivacyController().checkUserPrivacy(self != null ? self.user : null, u, album.commentPrivacy);
+					case Group g -> !album.flags.contains(PhotoAlbum.Flag.GROUP_DISABLE_COMMENTING);
+					case null, default -> false;
+				};
+			}
+			case BoardTopic bt -> self != null && ctx.getBoardController().canPostInTopic(self.user, bt);
 		};
 	}
 
@@ -201,10 +218,7 @@ public class CommentsRoutes{
 		Map<Long, UserInteractions> interactions=ctx.getUserInteractionsController().getUserInteractions(comments.list.stream().map(cvm->cvm.post).toList(), self!=null ? self.user : null);
 		model.with("commentInteractions", interactions);
 
-		boolean canComment=switch(parent){
-			case Photo p -> ctx.getPrivacyController().checkUserPrivacy(self!=null ? self.user : null, ctx.getUsersController().getUserOrThrow(p.ownerID), ctx.getPhotosController().getAlbumIgnoringPrivacy(p.albumID).commentPrivacy);
-			case BoardTopic bt -> self!=null && ctx.getBoardController().canPostInTopic(self.user, bt);
-		};
+		boolean canComment = canComment(ctx, self, parent);
 
 		String elementID=parent.getCommentParentID().getHtmlElementID();
 
@@ -254,11 +268,7 @@ public class CommentsRoutes{
 		Map<Long, UserInteractions> interactions=ctx.getUserInteractionsController().getUserInteractions(allReplies.stream().map(cvm->cvm.post).toList(), self!=null ? self.user : null);
 		model.with("commentInteractions", interactions);
 		prepareCommentList(ctx, comments.list, model, self, parent);
-		boolean canComment=switch(parent){
-			case Photo p -> ctx.getPrivacyController().checkUserPrivacy(self!=null ? self.user : null, ctx.getUsersController().getUserOrThrow(p.ownerID), ctx.getPhotosController().getAlbumIgnoringPrivacy(p.albumID).commentPrivacy);
-			case BoardTopic bt -> self!=null && ctx.getBoardController().canPostInTopic(self.user, bt);
-		};
-		model.with("commentViewType", viewType).with("canComment", canComment);
+		model.with("commentViewType", viewType).with("canComment", canComment(ctx, self, parent));
 		WebDeltaResponse wdr=new WebDeltaResponse(resp)
 				.insertHTML(WebDeltaResponse.ElementInsertionMode.BEFORE_BEGIN, "loadRepliesContainer"+commentID, model.renderToString());
 		if(comments.list.size()+offset==comments.total){
