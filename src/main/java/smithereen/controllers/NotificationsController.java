@@ -27,6 +27,7 @@ import smithereen.model.objects.Actor;
 import smithereen.exceptions.InternalServerErrorException;
 import smithereen.exceptions.ObjectNotFoundException;
 import smithereen.lang.Lang;
+import smithereen.mcp.AgentEvents;
 import smithereen.model.Account;
 import smithereen.model.Group;
 import smithereen.model.MailMessage;
@@ -309,6 +310,8 @@ public class NotificationsController{
 				}
 			}
 		}
+
+		AgentEvents.getInstance().publish(context, user, id, type, object, relatedObject, actor);
 
 		RealtimeNotificationSettingType settingType=type.getSettingType();
 		if(account.prefs.notifierTypes!=null && settingType!=null && !account.prefs.notifierTypes.contains(settingType))

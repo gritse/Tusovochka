@@ -120,6 +120,8 @@ To let an agent use your account:
 
 Notes for server owners: the endpoint accepts the token only in the `Authorization` header, refuses requests with a foreign `Origin`, never streams (no SSE, no sessions), and limits each token to 3 requests per second and 60 writes per hour. On a members-only server (`private_server=true`) it works the same, because a token always identifies a member. Set `mcp.enabled=false` in `config.properties` to turn it off. The agent-facing tools never include administration or moderation.
 
+To have new messages, comments, mentions and invites pushed into a running Claude Code session as they happen, add the channel bridge from [channel/](channel/README.md) next to the MCP server. It reads the event stream at `wss://<your domain>/mcp/events` with the same token, which needs the `notifications` scope.
+
 ## Contributing
 
 Issues and pull requests are welcome in this repository. Please keep the scope in mind: this fork will not add federation back, and it keeps the upstream philosophy of a network you use to stay in touch with people you know, without hashtags, public feeds or global search.

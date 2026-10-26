@@ -17,6 +17,7 @@ import smithereen.exceptions.FloodControlViolationException;
 import smithereen.exceptions.InvalidAccessTokenException;
 import smithereen.lang.Lang;
 import smithereen.model.SizedImage;
+import smithereen.model.apps.ClientAppPermission;
 import smithereen.routes.ApiRoutes;
 import smithereen.util.FloodControl;
 import spark.Request;
@@ -24,6 +25,7 @@ import spark.Response;
 import spark.utils.StringUtils;
 
 import static smithereen.Utils.context;
+import static spark.Spark.halt;
 
 /**
  * The Streamable HTTP binding of the MCP endpoint at {@code /mcp}: bearer-token authentication, the Origin check, the
@@ -100,6 +102,41 @@ public class McpRoutes {
 			return "";
 		}
 		return respond(resp, result.status(), result.body());
+	}
+
+	/**
+	 * The Spark filter in front of the {@code /mcp/events} WebSocket: the upgrade only goes through with a valid token
+	 * that has the notifications scope. The WebSocket handler has no access to the Spark request, so the
+	 * authenticated token is passed on in a request attribute.
+	 */
+	public static void authenticateEventStream(Request req, Response resp) {
+		if (!Config.mcpEnabled)
+			halt(404, "");
+		String origin = req.headers("Origin");
+		if (StringUtils.isNotEmpty(origin) && !isOwnOrigin(origin))
+			halt(403, "origin not allowed");
+		String token = bearerToken(req);
+		if (token == null) {
+			resp.header("WWW-Authenticate", "Bearer realm=\"" + Config.domain + "\"");
+			halt(401, "an access token is required: Authorization: Bearer <token>");
+		}
+		AppsController.AuthenticatedToken auth;
+		try {
+			auth = context(req).getAppsController().authenticateToken(token, req);
+		} catch (InvalidAccessTokenException x) {
+			resp.header("WWW-Authenticate", "Bearer realm=\"" + Config.domain + "\", error=\"invalid_token\"");
+			halt(401, x.getMessage());
+			return;
+		}
+		if (!AgentEvents.hasScope(auth.token(), ClientAppPermission.NOTIFICATIONS))
+			halt(403, "the access token needs the notifications scope");
+		try {
+			FloodControl.MCP_REQUESTS.incrementOrThrow(auth.token().id());
+		} catch (FloodControlViolationException x) {
+			resp.header("Retry-After", "1");
+			halt(429, "too many requests, retry in 1 second");
+		}
+		req.attribute(AgentEventsWebSocket.AUTH_ATTRIBUTE, auth);
 	}
 
 	public static Object methodNotAllowed(Request req, Response resp) {

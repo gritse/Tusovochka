@@ -78,6 +78,7 @@ import smithereen.routes.NotifierWebSocket;
 import smithereen.routes.PhotosRoutes;
 import smithereen.routes.PostRoutes;
 import smithereen.routes.ProfileRoutes;
+import smithereen.mcp.AgentEventsWebSocket;
 import smithereen.mcp.McpRoutes;
 import smithereen.routes.SessionRoutes;
 import smithereen.routes.SettingsRoutes;
@@ -193,6 +194,8 @@ public class SmithereenApplication{
 		staticFiles.expireTime(7*24*60*60);
 
 		webSocket("/system/ws/notifier", NotifierWebSocket.class);
+		// Real-time notifications for AI agents, the source of the Claude Code channel in channel/
+		webSocket("/mcp/events", AgentEventsWebSocket.class);
 
 		if(Config.DEBUG){
 			before((req, resp)->{
@@ -203,7 +206,7 @@ public class SmithereenApplication{
 		before((request, response) -> {
 			request.attribute("context", context);
 
-			if(request.pathInfo().startsWith("/api/") || request.pathInfo().equals("/mcp"))
+			if(request.pathInfo().startsWith("/api/") || request.pathInfo().equals("/mcp") || request.pathInfo().startsWith("/mcp/"))
 				return;
 			Session session=request.session(false);
 			if(session==null || session.attribute("info")==null){
@@ -261,6 +264,7 @@ public class SmithereenApplication{
 				request.attribute("mobile", Boolean.TRUE);
 			}
 		});
+		before("/mcp/events", McpRoutes::authenticateEventStream);
 		before("/system/ws/*", (req, resp)->{
 			// Websockets don't have access to the real request object, so let's put the session info somewhere where it can be accessed
 			SessionInfo info=sessionInfo(req);
@@ -1194,7 +1198,7 @@ public class SmithereenApplication{
 	}
 
 	private static boolean isAllowedForAnonymousUsers(String path){
-		if(path.startsWith("/account/") || path.startsWith("/api/") || path.startsWith("/res/") || path.equals("/mcp"))
+		if(path.startsWith("/account/") || path.startsWith("/api/") || path.startsWith("/res/") || path.equals("/mcp") || path.startsWith("/mcp/"))
 			return true;
 		return Set.of(
 				"/",

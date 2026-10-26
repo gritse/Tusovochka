@@ -107,6 +107,17 @@ With Claude Code installed, `claude mcp add --transport http tusovochka http://1
 followed by `claude mcp list` shows whether the real client connects, and `claude -p "..."` with
 `--allowedTools "mcp__tusovochka__*"` runs an agent against it.
 
+### The Claude Code channel (`/mcp/events`)
+
+Run `npm install` in `channel/`, put the `.mcp.json` from `channel/README.md` into a scratch directory (with
+`http://127.0.0.1:4567` as the URL and a token for `admin`), and start an interactive session there:
+`TUSOVOCHKA_TOKEN=<token> claude --dangerously-load-development-channels server:tusovochka-events`. Channels do not
+work with `claude -p`, so to script it run Claude inside `tmux` and drive it with `tmux send-keys` /
+`tmux capture-pane`. Then, with a token for `yulia`, call `send_message` to user 1 or `create_comment` on one of
+admin's posts through `/mcp` (the `curl` in `dev/mcp-smoke.sh` shows the request format): the session prints
+`← tusovochka-events: …` and reacts. Without Claude, `node -e` with `new WebSocket(url, {headers: {Authorization:
+'Bearer …'}})` prints the raw events.
+
 ## 4. Check a feature in the browser
 
 Open `http://localhost:4567`, log in as one of the users above. Useful pages:

@@ -590,3 +590,49 @@ from 4.2 A. It stops being needed once option B ships.
    (`ApiUtils.enforceCaptcha` is only called by `utils.testCaptcha`), so nothing has to be built; if a captcha is
    ever wired into posting, agent tokens bypass it.
 5. Phase 2 (section 3.4) is not planned for now; the list stays as later work.
+
+## 8. Real-time events: a Claude Code channel (added 2026-10-26)
+
+Goal: when someone writes to, replies to, mentions or invites the agent's user, a running Claude Code session hears
+about it at once instead of polling `get_notifications`. Claude Code calls this a
+[channel](https://code.claude.com/docs/en/channels-reference): an MCP server that Claude Code starts itself, talks
+to over **stdio**, and that sends `notifications/claude/channel` messages on its own. `/mcp` cannot be one: it is a
+remote, stateless request/response endpoint (2.2), and channels are only defined for stdio servers. So the work is
+split in two:
+
+| Piece | Where | What it does |
+|---|---|---|
+| Event stream | `GET /mcp/events` (WebSocket), `smithereen.mcp.AgentEvents`, `AgentEventsWebSocket` | Pushes the user's real-time notifications as JSON, authenticated with an agent token. |
+| Channel bridge | `channel/tusovochka-channel.mjs` (Node 22+ or Bun, `@modelcontextprotocol/sdk`) | Holds the WebSocket open, turns every event into a channel notification. Setup in `channel/README.md`. |
+
+Server side:
+
+- The source is the one the web notifier already uses: `NotificationsController.sendRealtimeNotifications` calls
+  `AgentEvents.publish` before it applies the user's notifier settings, which are about browser pop-ups. One added
+  line in the controller, nothing else in the notification code changes.
+- Events are flat JSON objects in the ID conventions of the tools (3.1): `kind`, `from_id`/`from_name`, `summary`
+  (an English sentence), `text` (what the person wrote, as Markdown via `HtmlToMarkdown`), `url`, and
+  `message_id` / `post_id` + `comment_id` + `reply_to_comment` / `owner_id` / `photo_id` / `topic_id` / `group_id`.
+  Likes and reposts carry no `text`: the content is the user's own, the summary quotes its start.
+- Authentication: a Spark `before` filter on `/mcp/events` (`McpRoutes.authenticateEventStream`) checks the bearer
+  token, the `notifications` scope, the Origin and the MCP flood control before the upgrade, and hands the token to
+  the WebSocket handler in a request attribute, the same trick `/system/ws/notifier` uses for the web session.
+  Private messages are only sent to tokens with `messages:read`.
+- A revoked or expired token ends the stream at the next event (close code 4001): the token is looked up again
+  before each send, so revoking in Settings or changing the password takes effect without a reconnect.
+- Nothing is stored or replayed. A per-user sequence number and a "since" parameter would make catch-up exact; it is
+  not worth it while `get_notifications` and `get_messages` cover the gap.
+- No sender filtering: the network is small and everyone on it can already message the user. Revisit before the
+  network opens up, because every event is text put in front of the model.
+
+Bridge side: one-way (no reply tool; Claude answers with the `/mcp` tools, as the `instructions` say), reconnects with
+backoff up to 30 s and then tells Claude how long the gap was, stops on close code 4001. No permission relay: it
+would let anyone who can send the user a private message approve tool calls, unless it gates on the sender.
+
+Limits that come from Claude Code: channels are a research preview, so a self-made channel needs
+`--dangerously-load-development-channels server:<name>` on every start, works only in interactive sessions (not
+`claude -p`, not the Agent SDK), and needs channels enabled by the admin on Team and Enterprise plans.
+
+Tested end to end with Claude Code 2.1.310 against the local setup of `TESTS.md`: a private message, a comment and
+a wall post from another user reached the session, Claude answered the message and the comment (threaded) through
+the `/mcp` tools, a server restart produced a reconnect notice, and revoking the token closed the stream.

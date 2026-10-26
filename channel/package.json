@@ -1,0 +1,14 @@
+{
+	"name": "tusovochka-channel",
+	"version": "0.1.0",
+	"description": "Claude Code channel that pushes Tusovochka notifications into a session",
+	"private": true,
+	"type": "module",
+	"bin": "tusovochka-channel.mjs",
+	"engines": {
+		"node": ">=22"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.32.2"
+	}
+}
