@@ -138,3 +138,43 @@ What changed in the code after this feedback; everything below was checked again
 | Markdown round trip | Returned text is converted from HTML to Markdown (bold, italic, strikethrough, links, mentions, code, lists, quotes, headings), so `**Графит**` comes back as `**Графит**`, and the stray space before paragraph breaks is gone. A new `get_post_source` tool returns the exact original Markdown of the user's own editable posts for `edit_post`, whose description now mentions the 24-hour window. |
 | `create_group` retries | Takes a `guid`; a repeat within an hour returns the group created by the first call. |
 | Images, uploads | Not done. Returning image content and uploading photos need media handling in the tool layer; still open. |
+
+## Verification on production (2026-10-26)
+
+Re-ran the original cases against `tusovochka.grzyb.online` from Claude Code as `id7`.
+
+| Item | Result |
+|---|---|
+| 1. Like types | Live `tools/list`: `like` / `get_likes` take `post`, `photo`, `photo_comment`, `topic_comment`. |
+| 2. Replies in `get_comments_feed` | Fixed: 168, 170 (post 157), 169 (post 142) and 141 (post 98) appear with `reply_to_user` set. |
+| 3. `get_notifications` count | Fixed: `count: 3` returns 3 items. |
+| 4. Rate limit | 8 parallel read calls all succeeded (6 failed before). The `flood_control` path itself was not hit. |
+| 5. `reply_to_user` in notifications | Fixed: comment 168 has `reply_to_user: 7`. |
+| 6. Counters | Fixed: `get_me` → `pending: {unread_notifications, friend_requests, …}`, same keys in `get_counters`. |
+| Markdown round trip | Fixed: `**Графит**` comes back intact; `get_post_source` returns the original for own posts and `access_denied` for others'. |
+| 9–11. Token efficiency | Fixed: ISO dates in Europe/Warsaw, one `image_url`, comments without `reposts` / `can_pin`. |
+| `create_group` guid | Present in the live schema (not exercised, to avoid a second group). |
+
+## Follow-ups
+
+### 12. `get_notifications` side lists aren't trimmed with `items`
+`get_notifications {count: 3}` returns 3 items, but `wall_posts` / `wall_comments` still hold the objects for the whole
+untrimmed page: posts 89, 98, 136 and comments 99, 129, 140 are not referenced by any of the 3 items. The token saving
+from trimming is mostly lost. Filter the side lists to what the kept items reference.
+
+### 13. Descriptions still mention messages
+`get_me`: "together with their unread counters (friend requests, notifications, messages)"; `get_counters`: "how many
+unread notifications, private messages, …". Neither returns a messages count.
+
+### 14. Auto-linked domains come back as Markdown links
+Post 142 was written with plain `Gazeta.pl`; the HTML has it auto-linked, so it now reads `[Gazeta.pl](http://Gazeta.pl)`.
+Harmless, but the text no longer matches what was typed. Could collapse a link whose text equals its URL (minus scheme)
+back to the bare text.
+
+### 15. Input dates are still Unix seconds
+Output dates are ISO 8601, but `create_group` / `edit_group` take `start_date` / `finish_date` as Unix seconds. An agent
+reading an event and editing it has to convert both ways. Accepting ISO 8601 as well would make it symmetric.
+
+### Client side, not a server issue
+After `/mcp` reconnect, Claude Code kept the tool schemas it had loaded earlier in the session (old `like` enum, no
+`guid` on `create_group`), while new tools (`get_post_source`) appeared. A new session picks up the current schemas.
