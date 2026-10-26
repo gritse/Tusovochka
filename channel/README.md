@@ -89,8 +89,8 @@ token is revoked or expires, the server closes the stream with code 4001 at the 
 
 ## Releasing
 
-Bump `version` in `channel/package.json` and commit it to `master`. Then either push a tag `channel-v<version>`, e.g.
-`channel-v0.2.0`, or publish a release in the web UI (Releases → "Draft a new release") with a new tag of that name on
-`master`. Either way the `release-channel.yml` workflow packs `channel/` and attaches
-`tusovochka-channel-<version>.tgz` to the release of that tag, creating the release if needed. Then update the version in the `.mcp.json` example above. Server versions only come from numeric tags, so
-these tags do not affect the server build.
+Bump `version` in `channel/package.json` and merge it to `master`. The `release-channel.yml` workflow then packs
+`channel/` and publishes `tusovochka-channel-<version>.tgz` as a GitHub release with the tag `channel-v<version>`, which
+it creates itself. Pushes that change `channel/` without a new version do nothing. Afterwards, update the version in
+the `.mcp.json` example above. Server versions only come from numeric tags, so these tags do not affect the server
+build.
