@@ -27,8 +27,8 @@ This document covers: what the server already exposes (section 1), how the MCP e
   the token code path the API already has, so it adds no new trust boundary. The existing OAuth password grant
   works today as a zero-code fallback. Section 4.
 - **Phase 1** ships tokens + endpoint + the everyday tools (feed, wall, comments, likes, friends, groups,
-  messages, notifications, users, search). Phase 2 adds photos and uploads, polls, board topics, events,
-  bookmarks, profile editing. Phase 3 is optional: OAuth discovery for interactive MCP clients. Section 6.
+  messages, notifications, users, search). Phase 2 (photos and uploads, polls, board topics, bookmarks, profile
+  editing) is not planned for now. Phase 3 is optional: OAuth discovery for interactive MCP clients. Section 6.
 
 ## 1. What exists today
 
@@ -361,7 +361,7 @@ Around 50 tools. With Claude Code's tool search enabled (the default), only name
 load upfront, so the count is fine; for the Agent SDK with tool search off, 50 small schemas are still
 well under the context budget.
 
-### 3.4 Phase 2 tools
+### 3.4 Phase 2 tools (not planned for now)
 
 - **Photos and albums:** `get_albums`, `get_album_photos`, `get_photo`, `get_photo_comments`, `comment_photo`,
   `create_album`, `delete_photo`. **Uploads:** `upload_photo(album_id | for_attachment, base64 | file_url)`. The
@@ -452,8 +452,9 @@ for OAuth tokens). Everything else reuses existing tables.
   also works on `/api/method/*` with its scopes, which is fine and useful for debugging with `curl`.
 - Lifetimes offered in the UI: 1 day, 7 days, 30 days, 90 days, 1 year. Default 30 days. No "never": the
   user's requirement is an expirable token; a long-running deployment re-mints before expiry.
-- Scopes in the UI: the same checkboxes as the OAuth consent page (`oauth_prompt.twig`), all read scopes
-  checked by default, write scopes unchecked. The `offline` scope is not offered (expiry is explicit).
+- Scopes in the UI: the same checkboxes as the OAuth consent page (`oauth_prompt.twig`); all read scopes plus
+  `wall:write` and `messages:write` checked by default, other write scopes unchecked. The `offline` scope is not
+  offered (expiry is explicit).
 
 Routes (`SettingsRoutes`, under the existing `path("/settings/apps")`):
 
@@ -516,12 +517,13 @@ from 4.2 A. It stops being needed once option B ships.
   proper 401; without a valid token no tool is listed or callable, and `ApiDispatcher` additionally refuses
   all content methods on a private server without a token.
 - **Rate limits.** Existing `API_REQUESTS` (3/s per token) and `POSTS` (300 per 3h) apply unchanged. An agent
-  loop that hits 429 gets an `isError` result it can back off from. Consider a separate, lower bucket for
-  write tools (for example 60 writes/hour per token) configurable in `config.properties`; the harness has no
-  notion of "too chatty".
-- **Captcha.** The API may require a captcha for posting (`CAPTCHA_NEEDED`). An agent cannot solve one; the tool
-  returns the error as-is and the server admin can disable the captcha requirement for API posting or whitelist
-  the agent app. Decide at rollout; do not special-case in code.
+  loop that hits 429 gets an `isError` result it can back off from. Decided: a separate bucket for write tools,
+  60 writes per hour per token, as a fixed `FloodControl` constant like the existing ones, not a config key; the
+  harness has no notion of "too chatty".
+- **Captcha.** There is an API error for it (`CAPTCHA_NEEDED`), which an agent cannot solve. Correction after
+  re-checking the code: the API enforces no captcha on posting today (`ApiUtils.enforceCaptcha` is only called by
+  `utils.testCaptcha`), so there is nothing to skip. Decided: should a captcha ever be wired into posting, tokens
+  of the agent app bypass it.
 - **Prompt injection.** Every post, comment and message the tools return is text written by other users and
   reaches the model as data. The server cannot fix that, but the `instructions` string tells the model that
   tool results are user content, and the text rendering (3.2) keeps content inside quoted fields so it is not
@@ -550,7 +552,7 @@ from 4.2 A. It stops being needed once option B ships.
    3. `smithereen.mcp` protocol layer (`McpRoutes`, `McpServer`, `ToolRegistry`, `JsonSchema`, `ToolResult`) with
       `get_me` only, plus `mcp.enabled`.
    4. Tool families, one PR per family, in the order of section 3.3.
-2. **Phase 2:** section 3.4, uploads last.
+2. **Phase 2:** section 3.4, uploads last. Not planned for now; the list stays as later work.
 3. **Phase 3 (optional):** modern-era protocol (2026-07-28), OAuth discovery for interactive clients, token
    hashing at rest.
 
@@ -575,14 +577,16 @@ from 4.2 A. It stops being needed once option B ships.
 
 - README: a "Using with AI agents (MCP)" section: how to mint a token, the `.mcp.json` snippet, the scope list,
   the note about private servers and captcha.
-- `examples/config.properties`: `mcp.enabled` and any write rate limit added in section 5.
+- `examples/config.properties`: `mcp.enabled` only; the write limit is a code constant, not a config key.
 
-## 7. Open questions
+## 7. Decisions (were open questions, settled 2026-10-26)
 
-1. Should agent tokens show in Settings → Applications (next to OAuth grants, as proposed) or under
-   "Activity history"? They already appear in the latter as sessions of the "AI agents" app; the proposal puts
-   management in the former because that page is about third-party access.
-2. Default scope set for a new token: all read scopes + messages:write + wall:write, or all read only? The user
-   story ("write comments, posts, messages") suggests writes on by default; the safer default is reads only.
-3. Write rate limit for agents (section 5): value, and whether per token or per account.
-4. Captcha for API posting when the caller is an agent token: keep, or skip for tokens of the agent app?
+1. Agent tokens are managed in Settings → Applications, next to OAuth grants, because that page is about
+   third-party access. Activity history keeps listing them as sessions of the "AI agents" app.
+2. Default scopes for a new token: all read scopes plus `messages:write` and `wall:write`.
+3. Write rate limit for agents: the simplest option, a fixed 60 writes per hour per token as a `FloodControl`
+   constant, no config key.
+4. Captcha: skip for tokens of the agent app. Today the API enforces no captcha on posting at all
+   (`ApiUtils.enforceCaptcha` is only called by `utils.testCaptcha`), so nothing has to be built; if a captcha is
+   ever wired into posting, agent tokens bypass it.
+5. Phase 2 (section 3.4) is not planned for now; the list stays as later work.
