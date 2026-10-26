@@ -49,7 +49,7 @@ The Java packages, the jar file, the database name and the systemd service are s
 
 Copy [the Docker config example](examples/config_docker.properties) to the project root as `config.properties` and set your domain. Edit `docker-compose.yml` to add your imgproxy secrets. `docker compose up` then builds the image from this repository and runs the server, MySQL and imgproxy. You still need a web server in front: [nginx](examples/nginx.conf), [Caddy](examples/Caddyfile). Create the first account with `docker compose exec web bash -c ./smithereen-init-admin`.
 
-A prebuilt image is published to the GitHub Container Registry of this repository as `ghcr.io/gritse/tusovochka:latest`, with an additional tag for every commit it was built from. It is built by hand with the "Build and publish Docker image" workflow in the Actions tab, always from the latest commit on `master`. To use it instead of building locally, replace `build: .` with `image: ghcr.io/gritse/tusovochka:latest` in `docker-compose.yml`.
+A prebuilt image is published to the GitHub Container Registry of this repository as `ghcr.io/gritse/tusovochka:latest`, with an additional tag for every commit it was built from and a timestamp tag like `2026.10.25.203850` (Warsaw time) for pinning a particular build. It is built by hand with the "Build and publish Docker image" workflow in the Actions tab, always from the latest commit on `master`. To use it instead of building locally, replace `build: .` with `image: ghcr.io/gritse/tusovochka:latest` in `docker-compose.yml`.
 
 ### Upgrading
 
