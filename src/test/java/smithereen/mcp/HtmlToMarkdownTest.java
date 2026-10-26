@@ -24,7 +24,11 @@ public class HtmlToMarkdownTest {
 	@Test
 	public void linksAndMentions() {
 		assertEquals("see [the docs](https://example.com/docs) now", HtmlToMarkdown.convert("<p>see <a href=\"https://example.com/docs\">the docs</a> now</p>"));
-		assertEquals("<https://example.com>", HtmlToMarkdown.convert("<a href=\"https://example.com\">https://example.com</a>"));
+		// A URL or domain the author typed as text and the server auto-linked comes back as the author typed it
+		assertEquals("https://example.com", HtmlToMarkdown.convert("<a href=\"https://example.com\">https://example.com</a>"));
+		assertEquals("see Gazeta.pl today", HtmlToMarkdown.convert("<p>see <a href=\"http://Gazeta.pl\">Gazeta.pl</a> today</p>"));
+		assertEquals("example.com/path", HtmlToMarkdown.convert("<a href=\"https://example.com/path/\">example.com/path</a>"));
+		assertEquals("<https://example.com/x>", HtmlToMarkdown.convert("<a href=\"https://example.com/x\"></a>"));
 		assertEquals("hi @alice!", HtmlToMarkdown.convert("<p>hi <a href=\"https://x/alice\" class=\"mention\" data-user-id=\"3\">@alice</a>!</p>"));
 	}
 

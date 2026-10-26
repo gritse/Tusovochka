@@ -178,3 +178,13 @@ reading an event and editing it has to convert both ways. Accepting ISO 8601 as 
 ### Client side, not a server issue
 After `/mcp` reconnect, Claude Code kept the tool schemas it had loaded earlier in the session (old `like` enum, no
 `guid` on `create_group`), while new tools (`get_post_source`) appeared. A new session picks up the current schemas.
+
+## Resolution of the follow-ups (2026-10-26)
+
+| Item | Outcome |
+|---|---|
+| 12. Side lists not trimmed | `get_notifications` now keeps only the posts, comments, photos and topics the kept items reference, and only the profiles and groups those items and objects refer to. While testing this, a latent API bug surfaced: `notifications.get` threw a NullPointerException for an account that never opened the web UI (no time zone stored) as soon as a groupable notification such as a like existed; grouping now falls back to UTC. |
+| 13. Descriptions mention messages | `get_me` and `get_counters` describe exactly what they return and say that unread private messages are not counted. |
+| 14. Auto-linked domains | A link whose text is its own address (ignoring the scheme and a trailing slash) comes back as the bare text, so `Gazeta.pl` and `https://example.com` read as typed. |
+| 15. Input dates | `create_group` and `edit_group` accept ISO 8601 for `start_date` and `finish_date`: with an offset, or a local date-time or date read in the user's time zone. Unix seconds still work. An unparseable value is a `param_invalid` tool error. |
+| Stale schemas after reconnect | Client side, as noted; nothing to do on the server. |

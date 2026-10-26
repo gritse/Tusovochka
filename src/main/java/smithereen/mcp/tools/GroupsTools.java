@@ -10,6 +10,7 @@ import smithereen.mcp.ApiTool;
 import smithereen.mcp.JsonSchema;
 import smithereen.mcp.McpTool;
 import smithereen.mcp.ToolCallContext;
+import smithereen.mcp.ToolResult;
 import smithereen.model.apps.ClientAppPermission;
 
 /**
@@ -17,6 +18,7 @@ import smithereen.model.apps.ClientAppPermission;
  */
 public class GroupsTools {
 	private static final String GROUP_FIELDS = "screen_name,status,is_member,is_admin";
+	private static final String DATE_FORMAT = "as ISO 8601 (2026-11-02T19:00+01:00; without an offset it is read in the user's time zone) or Unix seconds";
 	/** groups.create has no guid of its own, so retries are deduplicated here: "<account id>:<guid>" to the group ID. */
 	private static final LruCache<String, Integer> recentlyCreatedGroups = new LruCache<>(1000);
 
@@ -121,12 +123,18 @@ public class GroupsTools {
 								.string("name", "The name.")
 								.stringEnum("type", "group or event.", "group", "event")
 								.string("description", "A description, plain text.")
-								.integer("start_date", "For events: when it starts, as a Unix timestamp in seconds. Must be in the future.")
+								.string("start_date", "For events: when it starts, " + DATE_FORMAT + ". Must be in the future.")
 								.string("guid", "Any unique string of your choice; a second call with the same guid within an hour returns the group created by the first.")
 								.required("name", "type"))
 						.scopes(ClientAppPermission.GROUPS_WRITE)
 						.call((ctx, args) -> {
-							var params = ToolCallContext.params(args, List.of("name", "type", "description", "start_date"));
+							var params = ToolCallContext.params(args, List.of("name", "type", "description"));
+							try {
+								if (args.has("start_date"))
+									params.put("start_date", ctx.parseDate(args.get("start_date")));
+							} catch (IllegalArgumentException x) {
+								return ToolResult.error("param_invalid", "start_date is " + x.getMessage());
+							}
 							String guid = args.get("guid") instanceof JsonPrimitive g ? g.getAsString() : null;
 							String key = guid == null ? null : ctx.self().id + ":" + guid;
 							if (key != null) {
@@ -148,13 +156,24 @@ public class GroupsTools {
 								.string("name", "The new name.")
 								.string("description", "The new description.")
 								.string("site", "The website URL.")
-								.integer("start_date", "For events: the new start, as a Unix timestamp in seconds.")
-								.integer("finish_date", "For events: the new end, as a Unix timestamp in seconds, or 0 to remove it.")
+								.string("start_date", "For events: the new start, " + DATE_FORMAT + ".")
+								.string("finish_date", "For events: the new end, " + DATE_FORMAT + ", or 0 to remove it.")
 								.string("place", "For events: where it takes place.")
 								.required("group_id"))
 						.scopes(ClientAppPermission.GROUPS_WRITE)
 						.idempotent()
-						.api("groups.edit")
+						.call((ctx, args) -> {
+							var params = ToolCallContext.params(args, List.of("group_id", "name", "description", "site", "place"));
+							try {
+								if (args.has("start_date"))
+									params.put("start_date", ctx.parseDate(args.get("start_date")));
+								if (args.has("finish_date"))
+									params.put("finish_date", ctx.parseDate(args.get("finish_date")));
+							} catch (IllegalArgumentException x) {
+								return ToolResult.error("param_invalid", "the date is " + x.getMessage());
+							}
+							return ctx.result(ctx.api("groups.edit", params));
+						})
 						.build()
 		);
 	}

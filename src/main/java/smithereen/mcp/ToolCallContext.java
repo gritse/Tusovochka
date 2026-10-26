@@ -5,8 +5,13 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,10 +53,41 @@ public class ToolCallContext {
 		return api(method, new HashMap<>());
 	}
 
+	/** The user's time zone, for dates in results and date arguments without an offset. */
+	public ZoneId zone() {
+		return actx.self != null && actx.self.prefs != null && actx.self.prefs.timeZone != null ? actx.self.prefs.timeZone : ZoneOffset.UTC;
+	}
+
 	/** Wraps an API response for the model, with dates in the user's time zone. */
 	public ToolResult result(JsonElement apiResult) {
-		ZoneId zone = actx.self != null && actx.self.prefs != null && actx.self.prefs.timeZone != null ? actx.self.prefs.timeZone : ZoneOffset.UTC;
-		return ToolResult.ofApi(apiResult, zone);
+		return ToolResult.ofApi(apiResult, zone());
+	}
+
+	/**
+	 * Parses a date argument: Unix seconds, or ISO 8601 (a date-time with an offset, a local date-time, or a date, the
+	 * latter two in the user's time zone). Returns the Unix seconds the API wants.
+	 *
+	 * @throws IllegalArgumentException when the value is neither
+	 */
+	public long parseDate(JsonElement value) {
+		if (value instanceof JsonPrimitive p && p.isNumber())
+			return p.getAsLong();
+		String s = value.getAsString().strip();
+		if (s.matches("-?\\d+"))
+			return Long.parseLong(s);
+		try {
+			return OffsetDateTime.parse(s).toEpochSecond();
+		} catch (DateTimeParseException ignore) {}
+		try {
+			return ZonedDateTime.parse(s).toEpochSecond();
+		} catch (DateTimeParseException ignore) {}
+		try {
+			return LocalDateTime.parse(s).atZone(zone()).toEpochSecond();
+		} catch (DateTimeParseException ignore) {}
+		try {
+			return LocalDate.parse(s).atStartOfDay(zone()).toEpochSecond();
+		} catch (DateTimeParseException ignore) {}
+		throw new IllegalArgumentException("not a date: " + s + "; use ISO 8601 such as 2026-11-02T19:00+01:00 or Unix seconds");
 	}
 
 	/**

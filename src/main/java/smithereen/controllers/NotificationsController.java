@@ -12,6 +12,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -82,6 +83,8 @@ public class NotificationsController{
 			PaginatedList<Notification> page;
 			List<NotificationWrapper> notifications=new ArrayList<>();
 			int lastSeenID=self.prefs.lastSeenNotificationID;
+			// An account that never opened the web UI has no time zone yet; API clients still need their notifications
+			ZoneId timeZone = self.prefs.timeZone != null ? self.prefs.timeZone : ZoneOffset.UTC;
 			HashMap<NotificationGroupingKey, GroupedNotification> groupedNotifications=new HashMap<>();
 			int actualOffset=offset;
 			int totalNotifications=0;
@@ -89,7 +92,7 @@ public class NotificationsController{
 				page=NotificationsStorage.getNotifications(self.user.id, actualOffset, 50, maxID);
 				for(Notification n:page.list){
 					if(n.type.canBeGrouped()){
-						NotificationGroupingKey key=new NotificationGroupingKey(n.type, n.objectType, n.objectID, LocalDate.ofInstant(n.time, self.prefs.timeZone), n.id<=lastSeenID);
+						NotificationGroupingKey key=new NotificationGroupingKey(n.type, n.objectType, n.objectID, LocalDate.ofInstant(n.time, timeZone), n.id<=lastSeenID);
 						GroupedNotification group=groupedNotifications.get(key);
 						if(group==null){
 							group=new GroupedNotification();

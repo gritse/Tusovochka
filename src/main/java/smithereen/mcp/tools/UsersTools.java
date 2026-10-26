@@ -23,7 +23,7 @@ public class UsersTools {
 		return List.of(
 				ApiTool.builder("get_me")
 						.title("Get the current user")
-						.description("Returns the profile of the user this access token belongs to, together with their unread counters (friend requests, notifications, messages). Call this first to learn whose account the tools act on.")
+						.description("Returns the profile of the user this access token belongs to, together with what is pending for them: unread notifications, incoming friend requests, group and event invitations, new photo tags. Call this first to learn whose account the tools act on.")
 						.readOnly()
 						.call((ctx, args) -> {
 							Map<String, Object> params = ToolCallContext.params();
@@ -57,7 +57,7 @@ public class UsersTools {
 						.build(),
 				ApiTool.builder("get_counters")
 						.title("Get pending counters")
-						.description("Returns what is waiting for the user: the number of unread notifications, pending incoming friend requests, pending group and event invitations, and new photo tags to confirm. These are not totals; use get_friends or get_my_groups for those.")
+						.description("Returns what is waiting for the user: the number of unread notifications, pending incoming friend requests, pending group and event invitations, and new photo tags to confirm. These are not totals (use get_friends or get_my_groups for those), and unread private messages are not counted; see get_messages.")
 						.readOnly()
 						.call((ctx, args) -> ctx.result(renameCounters(ctx.api("account.getCounters"))))
 						.build()

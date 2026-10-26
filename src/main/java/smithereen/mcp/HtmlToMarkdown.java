@@ -55,9 +55,10 @@ public final class HtmlToMarkdown {
 				children(el, inner, preformatted);
 				String text = inner.toString().strip();
 				String href = el.attr("href");
-				if (el.hasClass("mention") || href.isEmpty()) {
+				if (el.hasClass("mention") || href.isEmpty() || sameAddress(text, href)) {
+					// A mention, or a URL or domain the author typed as plain text that the server auto-linked
 					sb.append(text);
-				} else if (text.isEmpty() || text.equals(href)) {
+				} else if (text.isEmpty()) {
 					sb.append('<').append(href).append('>');
 				} else {
 					sb.append('[').append(text).append("](").append(href).append(')');
@@ -92,6 +93,16 @@ public final class HtmlToMarkdown {
 			}
 			default -> children(el, sb, preformatted);
 		}
+	}
+
+	/** True when the link text is the link's own address, ignoring the scheme and a trailing slash. */
+	static boolean sameAddress(String text, String href) {
+		return !text.isEmpty() && stripScheme(text).equalsIgnoreCase(stripScheme(href));
+	}
+
+	private static String stripScheme(String url) {
+		String s = url.strip().replaceFirst("^(?i)https?://", "");
+		return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
 	}
 
 	private static void children(Element el, StringBuilder sb, boolean preformatted) {

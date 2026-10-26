@@ -212,6 +212,18 @@ public class McpServerTest {
 	}
 
 	@Test
+	public void dateArgumentsAcceptIsoAndUnixSeconds() {
+		ToolCallContext ctx = context(EnumSet.noneOf(ClientAppPermission.class)); // no account: UTC
+		assertEquals(1793012865L, ctx.parseDate(new com.google.gson.JsonPrimitive(1793012865L)));
+		assertEquals(1793012865L, ctx.parseDate(new com.google.gson.JsonPrimitive("1793012865")));
+		assertEquals(1793012865L, ctx.parseDate(new com.google.gson.JsonPrimitive("2026-10-26T11:07:45Z")));
+		assertEquals(1793012865L, ctx.parseDate(new com.google.gson.JsonPrimitive("2026-10-26T13:07:45+02:00")));
+		assertEquals(1793012865L, ctx.parseDate(new com.google.gson.JsonPrimitive("2026-10-26T11:07:45")));
+		assertEquals(1792972800L, ctx.parseDate(new com.google.gson.JsonPrimitive("2026-10-26")));
+		assertThrows(IllegalArgumentException.class, () -> ctx.parseDate(new com.google.gson.JsonPrimitive("next friday")));
+	}
+
+	@Test
 	public void originCheck() {
 		URI own = URI.create("https://social.example.com/");
 		assertTrue(McpRoutes.isOwnOrigin("https://social.example.com", own));
