@@ -769,6 +769,18 @@ public class WallController{
 		}
 	}
 
+	/**
+	 * Fills in {@link PostViewModel#parentAuthorID} for comments loaded outside of a comment thread, for example the ones
+	 * referenced by notifications, so that the API can tell whose comment each of them replies to.
+	 */
+	public void fillInParentAuthors(List<PostViewModel> comments) {
+		try {
+			fillInParentAuthors(comments, null);
+		} catch (SQLException x) {
+			throw new InternalServerErrorException(x);
+		}
+	}
+
 	private void fillInParentAuthors(List<PostViewModel> posts, Post threadParent) throws SQLException{
 		HashMap<Integer, Integer> authorIDs=new HashMap<>();
 		if(threadParent!=null)

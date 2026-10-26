@@ -1,5 +1,6 @@
 package smithereen.mcp.tools;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.util.List;
@@ -29,13 +30,13 @@ public class UsersTools {
 							params.put("fields", USER_FIELDS);
 							JsonObject result = new JsonObject();
 							result.add("user", ctx.api("users.get", params).getAsJsonArray().get(0));
-							result.add("counters", ctx.api("account.getCounters"));
-							return ToolResult.ofApi(result);
+							result.add("pending", renameCounters(ctx.api("account.getCounters")));
+							return ctx.result(result);
 						})
 						.build(),
 				ApiTool.builder("get_users")
 						.title("Get users by ID or username")
-						.description("Returns profiles of users given their numeric IDs or usernames (screen names), up to 50 at once.")
+						.description("Returns profiles of users given their numeric IDs or usernames (screen names), up to 50 at once. IDs and names that match nobody are left out of the result without an error.")
 						.schema(JsonSchema.object()
 								.stringList("user_ids", "Numeric user IDs or usernames, for example [\"12\", \"alice\"].")
 								.required("user_ids"))
@@ -55,11 +56,23 @@ public class UsersTools {
 						.api("users.search")
 						.build(),
 				ApiTool.builder("get_counters")
-						.title("Get unread counters")
-						.description("Returns how many unread notifications, private messages, friend requests, and group and event invitations the user has.")
+						.title("Get pending counters")
+						.description("Returns what is waiting for the user: the number of unread notifications, pending incoming friend requests, pending group and event invitations, and new photo tags to confirm. These are not totals; use get_friends or get_my_groups for those.")
 						.readOnly()
-						.api("account.getCounters")
+						.call((ctx, args) -> ctx.result(renameCounters(ctx.api("account.getCounters"))))
 						.build()
 		);
+	}
+
+	/** The API names the counters like totals (friends, groups); they are counts of pending things. */
+	static JsonObject renameCounters(JsonElement counters) {
+		JsonObject in = counters.getAsJsonObject();
+		JsonObject out = new JsonObject();
+		out.add("unread_notifications", in.get("notifications"));
+		out.add("friend_requests", in.get("friends"));
+		out.add("group_invites", in.get("groups"));
+		out.add("event_invites", in.get("events"));
+		out.add("new_photo_tags", in.get("photos"));
+		return out;
 	}
 }

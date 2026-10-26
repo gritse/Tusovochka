@@ -5,6 +5,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +46,12 @@ public class ToolCallContext {
 
 	public JsonElement api(String method) {
 		return api(method, new HashMap<>());
+	}
+
+	/** Wraps an API response for the model, with dates in the user's time zone. */
+	public ToolResult result(JsonElement apiResult) {
+		ZoneId zone = actx.self != null && actx.self.prefs != null && actx.self.prefs.timeZone != null ? actx.self.prefs.timeZone : ZoneOffset.UTC;
+		return ToolResult.ofApi(apiResult, zone);
 	}
 
 	/**

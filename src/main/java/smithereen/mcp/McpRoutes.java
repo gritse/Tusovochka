@@ -73,18 +73,22 @@ public class McpRoutes {
 			resp.header("WWW-Authenticate", "Bearer realm=\"" + Config.domain + "\", error=\"invalid_token\"");
 			return respond(resp, 401, McpServer.error(JsonNull.INSTANCE, McpServer.INVALID_REQUEST, x.getMessage()));
 		}
-		try {
-			FloodControl.API_REQUESTS.incrementOrThrow(auth.token().id());
-		} catch (FloodControlViolationException x) {
-			resp.header("Retry-After", "1");
-			return respond(resp, 429, McpServer.error(JsonNull.INSTANCE, McpServer.INVALID_REQUEST, "too many requests"));
-		}
-
 		JsonElement message;
 		try {
 			message = JsonParser.parseString(req.body());
 		} catch (JsonParseException x) {
 			return respond(resp, 400, McpServer.error(JsonNull.INSTANCE, McpServer.PARSE_ERROR, "the body is not valid JSON"));
+		}
+
+		try {
+			FloodControl.MCP_REQUESTS.incrementOrThrow(auth.token().id());
+		} catch (FloodControlViolationException x) {
+			// A tool call gets an error result the model can read and act on; anything else is a transport-level 429
+			JsonElement toolCallID = McpServer.toolCallRequestID(message);
+			if (toolCallID != null)
+				return respond(resp, 200, McpServer.result(toolCallID, McpServer.RATE_LIMITED.toJson()));
+			resp.header("Retry-After", "1");
+			return respond(resp, 429, McpServer.error(JsonNull.INSTANCE, McpServer.INVALID_REQUEST, "too many requests, retry in 1 second"));
 		}
 
 		ApiCallContext actx = new ApiCallContext(auth.token(), auth.account(), Map.of(), req, 1, 0, ctx.getUsersController().getUserPermissions(auth.account()));

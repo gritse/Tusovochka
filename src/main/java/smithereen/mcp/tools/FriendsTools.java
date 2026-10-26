@@ -52,7 +52,7 @@ public class FriendsTools {
 							var params = ToolCallContext.params(args, List.of("user_id", "offset", "count"));
 							params.put("target_user_id", params.remove("user_id"));
 							params.put("fields", UsersTools.USER_FIELDS);
-							return ToolResult.ofApi(ctx.api("friends.getMutual", params));
+							return ctx.result(ctx.api("friends.getMutual", params));
 						})
 						.build(),
 				ApiTool.builder("get_friend_requests")
@@ -80,7 +80,7 @@ public class FriendsTools {
 							Object message = params.remove("message");
 							if (message != null)
 								params.put("text", message);
-							return ToolResult.ofApi(ctx.api("friends.add", params));
+							return ctx.result(ctx.api("friends.add", params));
 						})
 						.build(),
 				ApiTool.builder("remove_friend")

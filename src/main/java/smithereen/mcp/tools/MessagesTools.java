@@ -27,7 +27,7 @@ public class MessagesTools {
 							var params = ToolCallContext.params(args, List.of("offset", "count"));
 							params.put("out", args.has("folder") && "outbox".equals(args.get("folder").getAsString()));
 							params.put("extended", true);
-							return ToolResult.ofApi(ctx.api("messages.get", params));
+							return ctx.result(ctx.api("messages.get", params));
 						})
 						.build(),
 				ApiTool.builder("get_message_history")
@@ -70,7 +70,7 @@ public class MessagesTools {
 								params.put("to", to);
 							params.put("body", params.remove("text"));
 							params.put("text_format", "markdown");
-							return ToolResult.ofApi(ctx.api("messages.send", params));
+							return ctx.result(ctx.api("messages.send", params));
 						})
 						.build(),
 				ApiTool.builder("mark_message_read")

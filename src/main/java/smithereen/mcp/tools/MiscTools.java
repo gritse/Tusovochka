@@ -24,12 +24,12 @@ public class MiscTools {
 							JsonObject result = new JsonObject();
 							result.add("server", ctx.api("server.getInfo"));
 							result.add("announcements", ctx.api("server.getAnnouncements"));
-							return ToolResult.ofApi(result);
+							return ctx.result(result);
 						})
 						.build(),
 				ApiTool.builder("resolve_screen_name")
 						.title("Resolve a username")
-						.description("Tells whether a username belongs to a user, a group, or nothing, and returns its numeric ID.")
+						.description("Tells whether a username belongs to a user or a group and returns its numeric ID. An unknown username is a not_found error.")
 						.schema(JsonSchema.object()
 								.string("screen_name", "The username, without @.")
 								.required("screen_name"))

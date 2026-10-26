@@ -15,6 +15,9 @@ import smithereen.model.apps.ClientAppPermission;
 public class WallTools {
 	private static final String OWNER_ID = "The wall owner: a user ID, or a group ID with a minus sign for a group wall, for example -15. The current user's own wall when omitted.";
 	private static final String MARKDOWN = "The text, in Markdown. Mention a user with @username.";
+	private static final String LIKE_TYPE = "What kind of object: post (a wall post or a comment under a wall post, both have integer IDs), photo, photo_comment (a comment under a photo), or topic_comment (a comment in a board topic).";
+	private static final String[] LIKE_TYPES = {"post", "photo", "photo_comment", "topic_comment"};
+	private static final String LIKE_ITEM_ID = "The object's ID as a string: the integer ID for post, the string ID for photo, photo_comment and topic_comment.";
 
 	public static List<McpTool> tools() {
 		return List.of(
@@ -43,7 +46,7 @@ public class WallTools {
 							var params = ToolCallContext.params(args, List.of("post_ids"));
 							params.put("posts", params.remove("post_ids"));
 							params.put("extended", true);
-							return ToolResult.ofApi(ctx.api("wall.getById", params));
+							return ctx.result(ctx.api("wall.getById", params));
 						})
 						.build(),
 				ApiTool.builder("get_post_comments")
@@ -87,9 +90,17 @@ public class WallTools {
 						.fixed("text_format", "markdown")
 						.api("wall.createComment")
 						.build(),
+				ApiTool.builder("get_post_source")
+						.title("Get the Markdown source of a post or comment")
+						.description("Returns the original Markdown of a post or comment the user wrote and can still edit, exactly as it was submitted, for use with edit_post. Fails with access_denied for other people's posts or after the edit window has passed.")
+						.schema(JsonSchema.object().integer("post_id", "The ID of the post or comment.").required("post_id"))
+						.scopes(ClientAppPermission.WALL_READ)
+						.readOnly()
+						.api("wall.getEditSource")
+						.build(),
 				ApiTool.builder("edit_post")
 						.title("Edit a post or comment")
-						.description("Replaces the text of a post or comment the user wrote. Returns its ID.")
+						.description("Replaces the text of a post or comment the user wrote within the last 24 hours (can_edit in the post tells whether it is still editable). Returns its ID. Use get_post_source first to get the exact Markdown to modify.")
 						.schema(JsonSchema.object()
 								.integer("post_id", "The ID of the post or comment to edit.")
 								.string("message", MARKDOWN)
@@ -141,10 +152,10 @@ public class WallTools {
 						.build(),
 				ApiTool.builder("like")
 						.title("Like a post, comment or photo")
-						.description("Likes a post, a comment or a photo as the user. Returns the new number of likes. Liking something already liked changes nothing.")
+						.description("Likes a wall post, a comment or a photo as the user. Returns the new number of likes. Liking something already liked changes nothing.")
 						.schema(JsonSchema.object()
-								.stringEnum("type", "What is being liked: post (a wall post or wall comment), comment (a comment on a photo or board topic), or photo.", "post", "comment", "photo")
-								.string("item_id", "The ID of the object: a number for posts, the string ID for comments and photos.")
+								.stringEnum("type", LIKE_TYPE, LIKE_TYPES)
+								.string("item_id", LIKE_ITEM_ID)
 								.required("type", "item_id"))
 						.scopes(ClientAppPermission.LIKES_WRITE)
 						.idempotent()
@@ -154,8 +165,8 @@ public class WallTools {
 						.title("Remove a like")
 						.description("Removes the user's like from a post, comment or photo. Returns the new number of likes.")
 						.schema(JsonSchema.object()
-								.stringEnum("type", "What was liked: post, comment, or photo.", "post", "comment", "photo")
-								.string("item_id", "The ID of the object: a number for posts, the string ID for comments and photos.")
+								.stringEnum("type", LIKE_TYPE, LIKE_TYPES)
+								.string("item_id", LIKE_ITEM_ID)
 								.required("type", "item_id"))
 						.scopes(ClientAppPermission.LIKES_WRITE)
 						.idempotent()
@@ -165,8 +176,8 @@ public class WallTools {
 						.title("Get who liked something")
 						.description("Returns the users who liked a post, comment or photo, and how many there are in total.")
 						.schema(JsonSchema.object()
-								.stringEnum("type", "What was liked: post, comment, or photo.", "post", "comment", "photo")
-								.string("item_id", "The ID of the object: a number for posts, the string ID for comments and photos.")
+								.stringEnum("type", LIKE_TYPE, LIKE_TYPES)
+								.string("item_id", LIKE_ITEM_ID)
 								.bool("friends_only", "Only the user's friends.")
 								.pagination(20)
 								.required("type", "item_id"))

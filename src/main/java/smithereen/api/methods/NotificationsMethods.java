@@ -293,6 +293,7 @@ public class NotificationsMethods{
 
 		List<PostViewModel> topLevelPosts=posts.values().stream().filter(p->p.getReplyLevel()==0).map(PostViewModel::new).toList();
 		List<PostViewModel> wallComments=posts.values().stream().filter(p->p.getReplyLevel()>0).map(PostViewModel::new).toList();
+		ctx.getWallController().fillInParentAuthors(wallComments);
 
 		List<CommentViewModel> photoComments=comments.values().stream().filter(c->c.parentObjectID.type()==CommentableObjectType.PHOTO).map(CommentViewModel::new).toList();
 		List<CommentViewModel> boardComments=comments.values().stream().filter(c->c.parentObjectID.type()==CommentableObjectType.BOARD_TOPIC).map(CommentViewModel::new).toList();

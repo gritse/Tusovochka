@@ -1,10 +1,15 @@
 package smithereen.mcp.tools;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+
 import java.util.List;
 
 import smithereen.mcp.ApiTool;
 import smithereen.mcp.JsonSchema;
 import smithereen.mcp.McpTool;
+import smithereen.mcp.ToolCallContext;
 import smithereen.model.apps.ClientAppPermission;
 
 /**
@@ -39,7 +44,7 @@ public class FeedTools {
 						.build(),
 				ApiTool.builder("get_comments_feed")
 						.title("Get the comments feed")
-						.description("Returns posts, photos and board topics the user commented on or follows that have new comments, with the latest comments on each, newest first. This is where replies to the user's comments show up.")
+						.description("Returns posts, photos and board topics the user commented on or follows that have new comments, newest first, each with its 3 latest comments including replies to replies. This is where answers to the user's comments show up; use get_post_comments for the whole thread.")
 						.schema(JsonSchema.object()
 								.stringList("filters", "Only comments on these object types: post, photo, board. Everything by default.")
 								.pagination(25))
@@ -47,6 +52,7 @@ public class FeedTools {
 						.readOnly()
 						.fixed("extended", true)
 						.fixed("last_comments", 3)
+						.fixed("comment_view_type", "flat")
 						.api("newsfeed.getComments")
 						.build(),
 				ApiTool.builder("get_notifications")
@@ -57,7 +63,19 @@ public class FeedTools {
 								.pagination(20))
 						.scopes(ClientAppPermission.NOTIFICATIONS)
 						.readOnly()
-						.api("notifications.get")
+						.call((ctx, args) -> {
+							var params = ToolCallContext.params(args, List.of("max_id", "offset", "count"));
+							JsonElement result = ctx.api("notifications.get", params);
+							// The API groups similar notifications after paging, so it can return more than asked for
+							int count = params.get("count") instanceof Integer c ? c : 20;
+							if (result instanceof JsonObject obj && obj.get("items") instanceof JsonArray items && items.size() > count) {
+								JsonArray trimmed = new JsonArray();
+								for (int i = 0; i < count; i++)
+									trimmed.add(items.get(i));
+								obj.add("items", trimmed);
+							}
+							return ctx.result(result);
+						})
 						.build(),
 				ApiTool.builder("mark_notifications_viewed")
 						.title("Mark notifications as viewed")

@@ -1,10 +1,15 @@
 package smithereen.mcp.tools;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
+
 import java.util.List;
 
+import smithereen.LruCache;
 import smithereen.mcp.ApiTool;
 import smithereen.mcp.JsonSchema;
 import smithereen.mcp.McpTool;
+import smithereen.mcp.ToolCallContext;
 import smithereen.model.apps.ClientAppPermission;
 
 /**
@@ -12,6 +17,8 @@ import smithereen.model.apps.ClientAppPermission;
  */
 public class GroupsTools {
 	private static final String GROUP_FIELDS = "screen_name,status,is_member,is_admin";
+	/** groups.create has no guid of its own, so retries are deduplicated here: "<account id>:<guid>" to the group ID. */
+	private static final LruCache<String, Integer> recentlyCreatedGroups = new LruCache<>(1000);
 
 	public static List<McpTool> tools() {
 		return List.of(
@@ -109,15 +116,29 @@ public class GroupsTools {
 						.build(),
 				ApiTool.builder("create_group")
 						.title("Create a group or event")
-						.description("Creates a new group, or a new event with a start date. The user becomes its owner. Returns the ID of the new group.")
+						.description("Creates a new group, or a new event with a start date. The user becomes its owner. Returns the ID of the new group. Pass the same guid on a retry to avoid creating it twice.")
 						.schema(JsonSchema.object()
 								.string("name", "The name.")
 								.stringEnum("type", "group or event.", "group", "event")
 								.string("description", "A description, plain text.")
 								.integer("start_date", "For events: when it starts, as a Unix timestamp in seconds. Must be in the future.")
+								.string("guid", "Any unique string of your choice; a second call with the same guid within an hour returns the group created by the first.")
 								.required("name", "type"))
 						.scopes(ClientAppPermission.GROUPS_WRITE)
-						.api("groups.create")
+						.call((ctx, args) -> {
+							var params = ToolCallContext.params(args, List.of("name", "type", "description", "start_date"));
+							String guid = args.get("guid") instanceof JsonPrimitive g ? g.getAsString() : null;
+							String key = guid == null ? null : ctx.self().id + ":" + guid;
+							if (key != null) {
+								Integer existing = recentlyCreatedGroups.get(key);
+								if (existing != null)
+									return ctx.result(new JsonPrimitive(existing));
+							}
+							JsonElement result = ctx.api("groups.create", params);
+							if (key != null && result instanceof JsonPrimitive p && p.isNumber())
+								recentlyCreatedGroups.put(key, p.getAsInt());
+							return ctx.result(result);
+						})
 						.build(),
 				ApiTool.builder("edit_group")
 						.title("Edit a group or event")

@@ -154,7 +154,7 @@ public final class ApiTool implements McpTool {
 			handler = (ctx, args) -> {
 				Map<String, Object> params = ToolCallContext.params(args, schema == null ? java.util.List.of() : schema.propertyNames());
 				params.putAll(fixed);
-				return ToolResult.ofApi(ctx.api(method, params));
+				return ctx.result(ctx.api(method, params));
 			};
 			return this;
 		}

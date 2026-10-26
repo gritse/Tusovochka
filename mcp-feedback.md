@@ -117,3 +117,24 @@ shrink responses.
 ## Not tested yet
 `send_message`, `repost`, `pin_post`, `delete_post`, friend/group actions, `get_groups_feed`, `get_blocked_users`,
 `get_group_invites`, `get_mutual_friends`, `get_messages_by_id`.
+
+## Resolution (2026-10-26)
+
+What changed in the code after this feedback; everything below was checked against a local server with two users.
+
+| Item | Outcome |
+|---|---|
+| 1. `like` / `unlike` / `get_likes` types | The tools now use the API's own values: `post` (wall posts and wall comments, integer IDs), `photo`, `photo_comment`, `topic_comment`, with the descriptions saying which IDs are integers and which are strings. |
+| 2. Replies hidden in `get_comments_feed` | The tool asks the API for a flat comment list (`comment_view_type=flat`), so the 3 latest comments include replies to replies. Verified: a reply to the user's reply shows up with `reply_to_user` set. |
+| 3. `get_notifications` ignores `count` | The API groups notifications after paging and returns the whole raw page; the tool now trims `items` to `count`. |
+| 4. Rate limit on reads | The MCP endpoint has its own limit of 15 requests per second per token (the API's 3/s no longer applies to it). Over the limit, a `tools/call` gets a tool result `flood_control: ... wait 1 second and retry` (HTTP 200, `isError`), other messages get 429 with `Retry-After`. The server instructions state both limits. |
+| 5. `reply_to_user: 0` in notifications | Fixed in the API: `notifications.get` now resolves parent authors for wall comments like `wall.getComments` does. |
+| 6. Counters named like totals | `get_me` returns them under `pending`, and `get_counters` returns `unread_notifications`, `friend_requests`, `group_invites`, `event_invites`, `new_photo_tags`; the description says they are not totals. |
+| 7. `managers` filter error | Could not reproduce: as the owner of a freshly created event, `get_group_members {filter: "managers"}` works with a token that has `groups:read`. The error text comes from the API and names both conditions; if it happens again, the token's scopes on the Settings page are the first thing to check. |
+| 8. Descriptions | `resolve_screen_name` says an unknown name is `not_found`; `get_users` says unknown IDs and names are left out; the instructions say there are no photo tools yet and how photos appear. |
+| 9. Heavy photo attachments | A photo now carries one `image_url` (the 800 px variant) with `image_width`/`image_height`, the caption and the counters; `sizes` and `blurhash` are gone. |
+| 10. Unix timestamps | `date`, `start_date`, `finish_date` and the other timestamp fields are ISO 8601 with offset in the user's time zone. Input dates (`create_group`, `edit_group`) are still Unix seconds, as described in the schemas. |
+| 11. Noise on comments | Comments no longer carry `reposts`, `can_pin`, `is_pinned`; `post_source` is dropped everywhere. |
+| Markdown round trip | Returned text is converted from HTML to Markdown (bold, italic, strikethrough, links, mentions, code, lists, quotes, headings), so `**Графит**` comes back as `**Графит**`, and the stray space before paragraph breaks is gone. A new `get_post_source` tool returns the exact original Markdown of the user's own editable posts for `edit_post`, whose description now mentions the 24-hour window. |
+| `create_group` retries | Takes a `guid`; a repeat within an hour returns the group created by the first call. |
+| Images, uploads | Not done. Returning image content and uploading photos need media handling in the tool layer; still open. |
