@@ -20,6 +20,7 @@ import smithereen.controllers.UserDataExportWorker;
 import smithereen.controllers.UserInteractionsController;
 import smithereen.controllers.UsersController;
 import smithereen.controllers.WallController;
+import smithereen.controllers.WebPushController;
 
 public class ApplicationContext{
 	private final WallController wallController;
@@ -42,6 +43,7 @@ public class ApplicationContext{
 	private final UserDataExportWorker userDataExportWorker;
 	private final AppsController appsController;
 	private final MediaProcessingQueue mediaProcessingQueue;
+	private final WebPushController webPushController;
 
 	public ApplicationContext(){
 		wallController=new WallController(this);
@@ -64,6 +66,7 @@ public class ApplicationContext{
 		userDataExportWorker=new UserDataExportWorker(this);
 		appsController=new AppsController(this);
 		mediaProcessingQueue=new MediaProcessingQueue(this);
+		webPushController = new WebPushController(this);
 	}
 
 	public WallController getWallController(){
@@ -144,5 +147,9 @@ public class ApplicationContext{
 
 	public AppsController getAppsController(){
 		return appsController;
+	}
+
+	public WebPushController getWebPushController() {
+		return webPushController;
 	}
 }

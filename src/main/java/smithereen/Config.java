@@ -12,6 +12,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -20,6 +21,8 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
+import java.security.interfaces.ECPrivateKey;
+import java.security.interfaces.ECPublicKey;
 import java.security.spec.EncodedKeySpec;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
@@ -46,6 +49,7 @@ import smithereen.storage.sql.DatabaseConnectionManager;
 import smithereen.storage.sql.SQLQueryBuilder;
 import smithereen.util.CryptoUtils;
 import smithereen.util.TopLevelDomainList;
+import smithereen.util.WebPush;
 import spark.utils.StringUtils;
 
 public class Config{
@@ -108,6 +112,12 @@ public class Config{
 	public static int[][] objectIdObfuscationKeysByType=new int[ObfuscatedObjectIDType.values().length][];
 	public static byte[] emailUnsubscribeKey;
 	public static byte[] fileRandomIdKey;
+	/**
+	 * The VAPID key pair that identifies this server to browser push services, see {@link smithereen.util.WebPush}.
+	 * Generated on first start. Changing it invalidates every existing push subscription.
+	 */
+	public static byte[] webPushPublicKey;
+	public static ECPrivateKey webPushPrivateKey;
 
 	public static int userExportCooldownDays, userExportRetentionDays;
 
@@ -339,6 +349,23 @@ public class Config{
 				fileRandomIdKey=key;
 			}else{
 				fileRandomIdKey=Base64.getDecoder().decode(fileIdKey);
+			}
+
+			String vapidPrivate = dbValues.get("WebPushPrivateKey");
+			try {
+				if (vapidPrivate == null) {
+					KeyPair keys = WebPush.generateKeyPair();
+					webPushPrivateKey = (ECPrivateKey) keys.getPrivate();
+					webPushPublicKey = WebPush.encodePublicKey((ECPublicKey) keys.getPublic());
+					Base64.Encoder b64 = Base64.getUrlEncoder().withoutPadding();
+					updateInDatabase(Map.of("WebPushPrivateKey", b64.encodeToString(WebPush.encodePrivateKey(webPushPrivateKey)),
+							"WebPushPublicKey", b64.encodeToString(webPushPublicKey)));
+				} else {
+					webPushPrivateKey = WebPush.decodePrivateKey(Base64.getUrlDecoder().decode(vapidPrivate));
+					webPushPublicKey = Base64.getUrlDecoder().decode(dbValues.get("WebPushPublicKey"));
+				}
+			} catch (GeneralSecurityException x) {
+				throw new IllegalStateException("Can't load the web push keys", x);
 			}
 		}
 	}

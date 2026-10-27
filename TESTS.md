@@ -231,3 +231,21 @@ page load; without it, `userConfig.uploads.videoEnabled` is false and the compos
 7. Attach an MP3 or WAV: the composer shows its title (from the tags, or the file name), the post lists it under the
    photos with title, artist and duration and "Processing audio…", which becomes a player the same way. Albums and
    profile pictures refuse audio.
+
+## 9. Checklist for browser push notifications (test page)
+
+Push needs HTTPS on a real domain; `localhost` also works in desktop browsers. The section is at the bottom of
+`/settings/notifications`.
+
+1. On an Android phone (Chrome or Firefox), open the site, press "Turn on" in "Push notifications (test)" and allow
+   notifications. The status changes to "This device receives push notifications" and the phone appears under Devices.
+2. On an iPhone or iPad (iOS 16.4+), Safari shows a hint instead of the button. Add the site to the Home Screen
+   (Share → Add to Home Screen), open it from the new icon, log in, and turn notifications on there.
+3. On a computer, press "Send a test notification". The box lists every device with "sent" or the push service's
+   error; the notification arrives on the phones even when the site is closed. Tapping it opens the notifications page.
+4. "Turn off" on a device removes it from the list. A device whose subscription expired (the push service answers
+   404 or 410) is removed when a test is sent to it.
+
+Headless checks with Playwright need `channel: 'chromium'` and `launchPersistentContext`: the default headless shell
+reports notifications as denied, and incognito contexts have no Push API. The subscription and the send work there,
+but the notification itself is not delivered when the sandbox can't reach Google's push connection.

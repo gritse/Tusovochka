@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Function;
@@ -39,6 +40,7 @@ import smithereen.model.media.MediaFileRef;
 import smithereen.model.media.MediaFileUploadPurpose;
 import smithereen.controllers.FriendsController;
 import smithereen.controllers.UsersController;
+import smithereen.controllers.WebPushController;
 import smithereen.exceptions.BadRequestException;
 import smithereen.exceptions.InternalServerErrorException;
 import smithereen.exceptions.ObjectNotFoundException;
@@ -69,6 +71,7 @@ import smithereen.model.media.MediaFileRecord;
 import smithereen.model.notifications.EmailNotificationFrequency;
 import smithereen.model.notifications.EmailNotificationType;
 import smithereen.model.notifications.RealtimeNotificationSettingType;
+import smithereen.model.notifications.WebPushSubscription;
 import smithereen.model.photos.AvatarCropRects;
 import smithereen.storage.MediaStorage;
 import smithereen.storage.MediaStorageUtils;
@@ -82,6 +85,7 @@ import smithereen.text.FormattedTextFormat;
 import smithereen.text.TextProcessor;
 import smithereen.util.FloodControl;
 import smithereen.util.UriBuilder;
+import smithereen.util.uaparser.BrowserInfo;
 import spark.Request;
 import spark.Response;
 import spark.Session;
@@ -821,6 +825,7 @@ public class SettingsRoutes{
 	}
 
 	public static Object notificationsSettings(Request req, Response resp, Account self, ApplicationContext ctx){
+		List<WebPushSubscription> webPushSubscriptions = ctx.getWebPushController().getSubscriptions(self);
 		RenderedTemplateResponse model=new RenderedTemplateResponse("settings_notifications", req)
 				.pageTitle(lang(req).get("notifications"))
 				.with("notifierTypes", self.prefs.notifierTypes)
@@ -832,8 +837,51 @@ public class SettingsRoutes{
 				.with("allEmailNotificationFreqOptions", EmailNotificationFrequency.values())
 				.with("allEmailNotificationTypes", EmailNotificationType.values())
 				.addMessage(req, "settings.notifierMessage", "notificationsMessage")
-				.addMessage(req, "settings.emailNotificationsMessage", "emailNotificationsMessage");
+				.addMessage(req, "settings.emailNotificationsMessage", "emailNotificationsMessage")
+				.with("webPushSubscriptions", webPushSubscriptions)
+				.with("webPushEndpoints", webPushSubscriptions.stream().map(WebPushSubscription::endpoint).toList())
+				.with("webPushPublicKey", Base64.getUrlEncoder().withoutPadding().encodeToString(Config.webPushPublicKey));
+		jsLangKey(req, "settings_web_push_this_device_on", "settings_web_push_this_device_off", "settings_web_push_unsupported",
+				"settings_web_push_ios_install", "settings_web_push_denied", "settings_web_push_no_https");
 		return model;
+	}
+
+	public static Object webPushSubscribe(Request req, Response resp, Account self, ApplicationContext ctx) {
+		ctx.getWebPushController().subscribe(self, req.queryParams("endpoint"), req.queryParams("p256dh"), req.queryParams("auth"), req.userAgent());
+		return new WebDeltaResponse(resp).refresh();
+	}
+
+	public static Object webPushUnsubscribe(Request req, Response resp, Account self, ApplicationContext ctx) {
+		ctx.getWebPushController().unsubscribe(self, req.queryParams("endpoint"));
+		return new WebDeltaResponse(resp).refresh();
+	}
+
+	/**
+	 * Sends a fixed notification to all of the user's devices and shows what each push service answered.
+	 */
+	public static Object webPushTest(Request req, Response resp, Account self, ApplicationContext ctx) {
+		Lang l = lang(req);
+		List<WebPushController.DeliveryResult> results = ctx.getWebPushController().sendToAccount(self, l.get("settings_web_push_test_title"),
+				l.get("settings_web_push_test_body", Map.of("time", l.formatTime(Instant.now(), timeZoneForRequest(req)))), "/settings/notifications");
+		StringBuilder msg = new StringBuilder();
+		if (results.isEmpty())
+			msg.append(TextProcessor.escapeHTML(l.get("settings_web_push_no_devices")));
+		for (WebPushController.DeliveryResult r : results) {
+			BrowserInfo browser = r.subscription().browserInfo();
+			msg.append("<b>").append(TextProcessor.escapeHTML(l.get("settings_activity_web", Map.of("browserName", browser.name(),
+					"browserVersion", Objects.requireNonNullElse(browser.getMajorVersion(), ""), "osName", browser.os().displayName)))).append("</b>: ");
+			String status;
+			if (r.delivered())
+				status = l.get("settings_web_push_result_sent");
+			else if (r.removed())
+				status = l.get("settings_web_push_result_removed", Map.of("status", r.status()));
+			else
+				status = l.get("settings_web_push_result_failed", Map.of("status", r.status(), "error", Objects.requireNonNullElse(r.error(), "")));
+			msg.append(TextProcessor.escapeHTML(status)).append("<br/>");
+		}
+		if (!isAjax(req))
+			return msg.toString();
+		return new WebDeltaResponse(resp).messageBox(l.get("settings_web_push_test"), msg.toString(), l.get("close"));
 	}
 
 	public static Object updateNotifierSettings(Request req, Response resp, Account self, ApplicationContext ctx){

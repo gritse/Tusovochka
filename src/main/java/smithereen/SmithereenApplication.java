@@ -359,6 +359,9 @@ public class SmithereenApplication{
 			postWithCSRF("/updateProfileContacts", SettingsRoutes::updateProfileContacts);
 			getLoggedIn("/notifications", SettingsRoutes::notificationsSettings);
 			postWithCSRF("/updateNotifier", SettingsRoutes::updateNotifierSettings);
+			postWithCSRF("/webPush/subscribe", SettingsRoutes::webPushSubscribe);
+			postWithCSRF("/webPush/unsubscribe", SettingsRoutes::webPushUnsubscribe);
+			postWithCSRF("/webPush/test", SettingsRoutes::webPushTest);
 			path("/filters", ()->{
 				getLoggedIn("", SettingsRoutes::filters);
 				getLoggedIn("/create", SettingsRoutes::createFilterForm);

@@ -1133,6 +1133,24 @@ CREATE TABLE `wall_posts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
+-- Table structure for table `web_push_subscriptions`
+--
+
+CREATE TABLE `web_push_subscriptions` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `account_id` int unsigned NOT NULL,
+  `endpoint` varchar(1000) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `key_p256dh` binary(65) NOT NULL,
+  `key_auth` binary(16) NOT NULL,
+  `user_agent` varchar(300) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `endpoint` (`endpoint`),
+  KEY `account_id` (`account_id`),
+  CONSTRAINT `web_push_subscriptions_ibfk_1` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
 -- Table structure for table `word_filters`
 --
 

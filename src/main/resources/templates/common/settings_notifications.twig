@@ -71,8 +71,41 @@
 		{{ form.footer(L('save')) }}
 	{{ form.end() }}
 	</form>
+	<form action="/settings/webPush/test?csrf={{ csrf }}" method="post" data-ajax>
+	{{ form.start("webPush", null) }}
+		<h2>{{ L('settings_web_push') }}</h2>
+		{{ form.unlabeledRowStart() }}
+		<div class="formExplanation">{{ L('settings_web_push_explanation') }}</div>
+		{{ form.unlabeledRowEnd() }}
+		{{ form.customControlStart('webPushThisDevice') }}
+		{{ L('settings_web_push_this_device') }}:
+		{{ form.customControlAfterLabel() }}
+		<div class="text">
+			<div id="webPushStatus">{{ L('settings_web_push_checking') }}</div>
+			<div class="marginBefore">
+				<button type="button" id="webPushEnable" style="display: none">{{ L('settings_web_push_enable') }}</button>
+				<button type="button" id="webPushDisable" class="tertiary" style="display: none">{{ L('settings_web_push_disable') }}</button>
+			</div>
+		</div>
+		{{ form.customControlEnd() }}
+		{{ form.customControlStart('webPushDevices') }}
+		{{ L('settings_web_push_devices') }}:
+		{{ form.customControlAfterLabel() }}
+		<div class="text">
+			{% for sub in webPushSubscriptions %}
+			<div>{{ L('settings_activity_web', {'browserName': sub.browserInfo.name, 'browserVersion': sub.browserInfo.majorVersion, 'osName': sub.browserInfo.os.displayName}) }} <span class="grayText">— {{ LD(sub.createdAt) }}</span></div>
+			{% else %}
+			<div class="grayText">{{ L('settings_web_push_no_devices') }}</div>
+			{% endfor %}
+		</div>
+		{{ form.customControlEnd() }}
+		{{ form.footer(L('settings_web_push_test')) }}
+	{{ form.end() }}
+	</form>
 </div>
 {% script %}
+initWebPushSettings("{{ webPushPublicKey }}", {{ json(webPushEndpoints) | raw }});
+
 cur.notifierTypesMenu=new MultipleChoicePopupMenu(ge("notifierTypesMenuW"), {
 	baseID: "notifierTypes",
 	allTitle: "{{ L('settings_notification_types_all') | forceEscape }}",
