@@ -14,6 +14,7 @@ import smithereen.model.feed.FriendsNewsfeedTypeFilter;
 import smithereen.model.feed.GroupsNewsfeedTypeFilter;
 import smithereen.model.notifications.EmailNotificationFrequency;
 import smithereen.model.notifications.EmailNotificationType;
+import smithereen.model.notifications.PushNotificationType;
 import smithereen.model.notifications.RealtimeNotificationSettingType;
 import smithereen.text.FormattedTextFormat;
 
@@ -44,4 +45,13 @@ public class UserPreferences{
 	public EnumSet<EmailNotificationType> emailNotificationTypes=EnumSet.allOf(EmailNotificationType.class);
 	public EmailNotificationFrequency emailNotificationFrequency=EmailNotificationFrequency.DAILY;
 	public Instant lastEmailNotification;
+	/**
+	 * What to send as browser push notifications. Null means {@link PushNotificationType#defaultTypes()}.
+	 */
+	@SerializedName("push")
+	public EnumSet<PushNotificationType> pushTypes;
+
+	public EnumSet<PushNotificationType> getPushTypes() {
+		return pushTypes == null ? PushNotificationType.defaultTypes() : pushTypes;
+	}
 }

@@ -213,6 +213,17 @@ public class GroupsController{
 		}
 	}
 
+	/**
+	 * IDs of every accepted member, for fan-outs to the whole group.
+	 */
+	public List<Integer> getAllMemberIDs(@NotNull Group group) {
+		try {
+			return GroupStorage.getAllMembersAsStream(group.id).boxed().toList();
+		} catch (SQLException x) {
+			throw new InternalServerErrorException(x);
+		}
+	}
+
 	public PaginatedList<Integer> getAllMembers(@NotNull Group group, int offset, int count, MemberSortOrder order){
 		try{
 			if(order==MemberSortOrder.RANDOM)

@@ -782,6 +782,17 @@ public class PostStorage{
 		}
 	}
 
+	/**
+	 * Everyone who has the object in their comments feed, i.e. has commented on it.
+	 */
+	public static List<Integer> getCommentsFeedParticipants(CommentsNewsfeedObjectType type, long objectID) throws SQLException {
+		return new SQLQueryBuilder()
+				.selectFrom("newsfeed_comments")
+				.columns("user_id")
+				.where("object_type=? AND object_id=?", type, objectID)
+				.executeAndGetIntList();
+	}
+
 	public static int getPostIdByPollId(int pollID) throws SQLException{
 		return new SQLQueryBuilder()
 				.selectFrom("wall_posts")

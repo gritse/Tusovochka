@@ -441,6 +441,17 @@ public class UserStorage{
 				.executeAndGetIntList();
 	}
 
+	/**
+	 * Everyone whose friends feed shows this user's news: accepted followers who haven't muted them.
+	 */
+	public static List<Integer> getFollowerIDsForFeed(int userID) throws SQLException {
+		return new SQLQueryBuilder()
+				.selectFrom("followings")
+				.columns("follower_id")
+				.where("followee_id=? AND accepted=1 AND muted=0", userID)
+				.executeAndGetIntList();
+	}
+
 	public static int getUserFriendsCount(int userID) throws SQLException{
 		return new SQLQueryBuilder()
 				.selectFrom("followings")

@@ -1,5 +1,5 @@
 // Service worker for browser push notifications. It lives at the site root so that its scope covers every page.
-// The server sends {title, body, url} as the encrypted payload, see WebPushController.
+// The server sends {title, body, url, icon} as the encrypted payload, see WebPushController.
 
 self.addEventListener("push", (event) => {
 	let data = {};
@@ -12,7 +12,8 @@ self.addEventListener("push", (event) => {
 	}
 	event.waitUntil(self.registration.showNotification(data.title || "Tusovochka", {
 		body: data.body || "",
-		icon: "/res/icon-192.png",
+		icon: data.icon || "/res/icon-192.png",
+		badge: "/res/icon-192.png",
 		data: {url: data.url || "/"}
 	}));
 });

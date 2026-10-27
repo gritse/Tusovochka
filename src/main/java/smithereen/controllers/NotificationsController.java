@@ -144,10 +144,12 @@ public class NotificationsController{
 					parent=null;
 				}
 				OwnerAndAuthor oaa=context.getWallController().getContentAuthorAndOwner(post);
+				HashSet<Integer> notifiedUsers=new HashSet<>();
 				// For a reply to a local post, notify the parent post author about the reply
 				if(parent!=null && parent.authorID!=post.authorID){
 					User parentAuthor=context.getUsersController().getUserOrThrow(parent.authorID);
 					createNotification(parentAuthor, Notification.Type.REPLY, post, parent, oaa.author());
+					notifiedUsers.add(parent.authorID);
 				}
 
 				// Notify every mentioned local user, except the parent post author, if any
@@ -157,6 +159,13 @@ public class NotificationsController{
 					if(user.id==post.authorID)
 						continue;
 					createNotification(user, Notification.Type.MENTION, post, null, oaa.author());
+					notifiedUsers.add(user.id);
+				}
+
+				// Everyone else in the comment thread gets a push through the comments feed
+				if(parent!=null){
+					Post topLevel=post.replyKey.size()==1 ? parent : context.getWallController().getPostOrThrow(post.replyKey.getFirst());
+					context.getWebPushController().sendForCommentsFeed(post, topLevel, oaa.author(), notifiedUsers);
 				}
 
 				// Finally, if it's a wall post on a local user's wall, notify them
@@ -201,7 +210,10 @@ public class NotificationsController{
 					if(user.id==comment.authorID)
 						continue;
 					createNotification(user, Notification.Type.MENTION, comment, parent, commentAuthor);
+					notifiedUsers.add(user.id);
 				}
+
+				context.getWebPushController().sendForCommentsFeed(comment, parent, commentAuthor, notifiedUsers);
 			}
 			default -> throw new IllegalStateException("Unexpected value: " + obj);
 		}
@@ -312,6 +324,7 @@ public class NotificationsController{
 		}
 
 		AgentEvents.getInstance().publish(context, user, id, type, object, relatedObject, actor);
+		context.getWebPushController().sendForNotification(account, type, object, relatedObject, actor);
 
 		RealtimeNotificationSettingType settingType=type.getSettingType();
 		if(account.prefs.notifierTypes!=null && settingType!=null && !account.prefs.notifierTypes.contains(settingType))
@@ -332,151 +345,10 @@ public class NotificationsController{
 			Thread.ofVirtual().start(()->{
 				Lang l=conn.lang;
 				ZoneId tz=conn.session.timeZone;
-				String title=l.get(switch(type){
-					case REPLY -> ((PostLikeObject)object).getReplyLevel()>1 || relatedObject instanceof BoardTopic ? "notification_title_reply" : "notification_title_comment";
-					case LIKE -> switch(objType){
-						case POST -> ((Post)object).getReplyLevel()>0 ? "notification_title_like_comment" : "notification_title_like_post";
-						case PHOTO -> "notification_title_like_photo";
-						case PHOTO_COMMENT, BOARD_COMMENT -> "notification_title_like_comment";
-						case null, default -> throw new IllegalStateException("Unexpected value: " + objType);
-					};
-					case MENTION -> "notification_title_mention";
-					case REPOST -> ((Post)object).getReplyLevel()>0 ? "notification_title_repost_comment" : "notification_title_repost_post";
-					case WALL_POST -> "notification_title_wall_post";
-					case INVITE_SIGNUP -> "notification_title_invite_signup";
-					case FOLLOW -> "notification_title_follow";
-					case FRIEND_REQUEST -> "notification_title_friend_request";
-					case FRIEND_REQUEST_ACCEPTED -> "notification_title_friend_request_accepted";
-					case MAIL_MESSAGE -> "notification_title_new_message";
-					case GROUP_INVITE -> "notification_title_group_invite";
-					case EVENT_INVITE -> "notification_title_event_invite";
-					case GROUP_REQUEST_ACCEPTED -> "notification_title_group_request_accepted";
-					case PHOTO_TAG -> "notification_title_photo_tag";
-					case EXPORT_READY -> "settings_data_export_title";
-				});
-				String content=switch(type){
-					case REPLY -> {
-						PostLikeObject comment=(PostLikeObject) object;
-						String preview=comment.getShortTitle();
-						if(StringUtils.isNotEmpty(preview))
-							yield makeActorLink(actor)+" "+preview;
-						String text;
-						User u=(User)actor;
-						String objURL="";
-						if(comment.getReplyLevel()==1 && !(relatedObject instanceof BoardTopic)){
-							if(comment instanceof Comment c){
-								text=switch(c.parentObjectID.type()){
-									case PHOTO -> l.get("notification_content_comment_photo", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
-									case BOARD_TOPIC -> null; // Comments on a board topic itself (no reply) don't make notifications
-								};
-								objURL=((CommentableContentObject)relatedObject).getURL();
-							}else{
-								text=l.get("notification_content_comment_post", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "parentText", makePostPreview((Post) relatedObject, l, tz)));
-							}
-						}else{
-							text=l.get("notification_content_reply", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "parentText", makePostPreview((Post) relatedObject, l, tz)));
-						}
-						yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "object", Map.of("href", objURL)));
-					}
-					case LIKE -> switch(object){
-						case Post post -> {
-							String text;
-							User u=(User)actor;
-							if(post.getReplyLevel()==0)
-								text=l.get("notification_content_like_post", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "text", makePostPreview(post, l, tz)));
-							else
-								text=l.get("notification_content_like_post_comment", Map.of("name", u.getFirstLastAndGender(),
-										"gender", u.gender, "text", makePostPreview(post, l, tz), "parentText", makePostPreview((Post)relatedObject, l, tz)));
-							yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
-						}
-						case Photo photo -> {
-							User u=(User)actor;
-							String text=l.get("notification_content_like_photo", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
-							yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "photo", Map.of("href", photo.getURL())));
-						}
-						case Comment comment -> {
-							User u=(User)actor;
-							CommentableContentObject parent=(CommentableContentObject) relatedObject;
-							String text=switch(parent.getCommentParentID().type()){
-								case PHOTO -> l.get("notification_content_like_photo_comment", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "text", makePostPreview(comment, l, tz)));
-								case BOARD_TOPIC -> l.get("notification_content_like_board_comment", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "text", makePostPreview(comment, l, tz),
-										"topic", TextProcessor.truncateOnWordBoundary(((BoardTopic)parent).title, 40)));
-							};
-							yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "object", Map.of("href", parent.getURL())));
-						}
-						case null, default -> throw new IllegalStateException("Unexpected value: " + objType);
-					};
-					case MENTION -> makeActorLink(actor)+" "+((PostLikeObject)object).getShortTitle();
-					case REPOST -> {
-						String text;
-						User u=(User) actor;
-						Post post=(Post) object;
-						if(post.getReplyLevel()==0)
-							text=l.get("notification_content_repost_post", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "text", post.getShortTitle()));
-						else
-							text=l.get("notification_content_repost_post_comment", Map.of("name", u.getFirstLastAndGender(),
-									"gender", u.gender, "text", makePostPreview(post, l, tz), "parentText", makePostPreview((Post)relatedObject, l, tz)));
-						yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
-					}
-					case WALL_POST -> {
-						Post post=(Post) object;
-						String preview=post.getShortTitle();
-						if(StringUtils.isNotEmpty(preview))
-							yield makeActorLink(actor)+" "+preview;
-						User u=(User)actor;
-						String text=l.get("notification_content_wall_post", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
-						yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
-					}
-					case INVITE_SIGNUP -> makeActorLink(actor)+" "+l.get("notification_invite_signup", Map.of("gender", ((User)actor).gender));
-					case FOLLOW -> makeActorLink(actor)+" "+l.get("notification_follow", Map.of("gender", ((User)actor).gender));
-					case FRIEND_REQUEST -> {
-						User u=(User)actor;
-						String text=l.get("notification_content_friend_request", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
-						yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
-					}
-					case FRIEND_REQUEST_ACCEPTED -> makeActorLink(actor)+" "+l.get("notification_friend_req_accept", Map.of("gender", ((User)actor).gender));
-					case MAIL_MESSAGE -> {
-						if(conn.session.account.prefs.notifierShowMessageText){
-							MailMessage msg=(MailMessage) object;
-							String preview=msg.getTextPreview();
-							if(StringUtils.isNotEmpty(preview))
-								yield makeActorLink(actor)+" "+preview;
-						}
-						User u=(User)actor;
-						String text=l.get("notification_content_mail_message", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
-						yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
-					}
-					case GROUP_INVITE -> {
-						User u=(User)actor;
-						Group g=(Group)object;
-						String text=l.get("notification_content_group_invite", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "groupName", g.name));
-						yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "group", Map.of("href", g.getProfileURL())));
-					}
-					case EVENT_INVITE -> {
-						User u=(User)actor;
-						Group g=(Group)object;
-						String text=l.get("notification_content_event_invite", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "eventName", g.name));
-						yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "event", Map.of("href", g.getProfileURL())));
-					}
-					case GROUP_REQUEST_ACCEPTED -> {
-						String text=l.get("notification_content_group_accepted", Map.of("name", actor.getName()));
-						yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
-					}
-					case PHOTO_TAG -> {
-						User u=(User)actor;
-						String text=l.get("notification_content_photo_tag", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
-						yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
-					}
-					case EXPORT_READY -> l.get("notification_content_export_ready", Map.of("time", l.formatDate(((UserDataExport)object).requestedAt, tz, false)));
-				};
-				String url=switch(object){
-					case Post post -> post.getReplyLevel()>0 && relatedObject instanceof Post parentPost ? parentPost.getInternalURL().toString()+"#comment"+post.id : post.getInternalURL().toString();
-					case Photo photo -> photo.getURL();
-					case Comment comment when relatedObject instanceof CommentableContentObject parent -> parent.getURL()+"#comment"+comment.getIDString();
-					case MailMessage msg -> "/my/mail/messages/"+msg.getIdString();
-					case UserDataExport ude -> "/settings/export";
-					case null, default -> actor.getProfileURL();
-				};
+				NotificationTexts texts=buildNotificationTexts(type, objType, object, relatedObject, actor, l, tz, conn.session.account.prefs.notifierShowMessageText);
+				String title=texts.title();
+				String content=texts.content();
+				String url=texts.url();
 				String objID=switch(object){
 					case Post post -> String.valueOf(post.id);
 					case Photo photo -> XTEA.encodeObjectID(photo.id, ObfuscatedObjectIDType.PHOTO);
@@ -563,6 +435,162 @@ public class NotificationsController{
 		}
 	}
 
+	/**
+	 * The wording of a notification for one language and time zone, shared by the on-site notifier and browser push.
+	 * {@code content} is HTML with links to the actor and the object.
+	 */
+	public record NotificationTexts(String title, String content, String url) {}
+
+	public NotificationTexts buildNotificationTexts(RealtimeNotification.Type type, RealtimeNotification.ObjectType objType, Object object, OwnedContentObject relatedObject,
+													Actor actor, Lang l, ZoneId tz, boolean showMessageText) {
+		String title=l.get(switch(type){
+			case REPLY -> ((PostLikeObject)object).getReplyLevel()>1 || relatedObject instanceof BoardTopic ? "notification_title_reply" : "notification_title_comment";
+			case LIKE -> switch(objType){
+				case POST -> ((Post)object).getReplyLevel()>0 ? "notification_title_like_comment" : "notification_title_like_post";
+				case PHOTO -> "notification_title_like_photo";
+				case PHOTO_COMMENT, BOARD_COMMENT -> "notification_title_like_comment";
+				case null, default -> throw new IllegalStateException("Unexpected value: " + objType);
+			};
+			case MENTION -> "notification_title_mention";
+			case REPOST -> ((Post)object).getReplyLevel()>0 ? "notification_title_repost_comment" : "notification_title_repost_post";
+			case WALL_POST -> "notification_title_wall_post";
+			case INVITE_SIGNUP -> "notification_title_invite_signup";
+			case FOLLOW -> "notification_title_follow";
+			case FRIEND_REQUEST -> "notification_title_friend_request";
+			case FRIEND_REQUEST_ACCEPTED -> "notification_title_friend_request_accepted";
+			case MAIL_MESSAGE -> "notification_title_new_message";
+			case GROUP_INVITE -> "notification_title_group_invite";
+			case EVENT_INVITE -> "notification_title_event_invite";
+			case GROUP_REQUEST_ACCEPTED -> "notification_title_group_request_accepted";
+			case PHOTO_TAG -> "notification_title_photo_tag";
+			case EXPORT_READY -> "settings_data_export_title";
+		});
+		String content=switch(type){
+			case REPLY -> {
+				PostLikeObject comment=(PostLikeObject) object;
+				String preview=comment.getShortTitle();
+				if(StringUtils.isNotEmpty(preview))
+					yield makeActorLink(actor)+" "+preview;
+				String text;
+				User u=(User)actor;
+				String objURL="";
+				if(comment.getReplyLevel()==1 && !(relatedObject instanceof BoardTopic)){
+					if(comment instanceof Comment c){
+						text=switch(c.parentObjectID.type()){
+							case PHOTO -> l.get("notification_content_comment_photo", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
+							case BOARD_TOPIC -> null; // Comments on a board topic itself (no reply) don't make notifications
+						};
+						objURL=((CommentableContentObject)relatedObject).getURL();
+					}else{
+						text=l.get("notification_content_comment_post", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "parentText", makePostPreview((Post) relatedObject, l, tz)));
+					}
+				}else{
+					text=l.get("notification_content_reply", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "parentText", makePostPreview((Post) relatedObject, l, tz)));
+				}
+				yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "object", Map.of("href", objURL)));
+			}
+			case LIKE -> switch(object){
+				case Post post -> {
+					String text;
+					User u=(User)actor;
+					if(post.getReplyLevel()==0)
+						text=l.get("notification_content_like_post", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "text", makePostPreview(post, l, tz)));
+					else
+						text=l.get("notification_content_like_post_comment", Map.of("name", u.getFirstLastAndGender(),
+								"gender", u.gender, "text", makePostPreview(post, l, tz), "parentText", makePostPreview((Post)relatedObject, l, tz)));
+					yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
+				}
+				case Photo photo -> {
+					User u=(User)actor;
+					String text=l.get("notification_content_like_photo", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
+					yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "photo", Map.of("href", photo.getURL())));
+				}
+				case Comment comment -> {
+					User u=(User)actor;
+					CommentableContentObject parent=(CommentableContentObject) relatedObject;
+					String text=switch(parent.getCommentParentID().type()){
+						case PHOTO -> l.get("notification_content_like_photo_comment", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "text", makePostPreview(comment, l, tz)));
+						case BOARD_TOPIC -> l.get("notification_content_like_board_comment", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "text", makePostPreview(comment, l, tz),
+								"topic", TextProcessor.truncateOnWordBoundary(((BoardTopic)parent).title, 40)));
+					};
+					yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "object", Map.of("href", parent.getURL())));
+				}
+				case null, default -> throw new IllegalStateException("Unexpected value: " + objType);
+			};
+			case MENTION -> makeActorLink(actor)+" "+((PostLikeObject)object).getShortTitle();
+			case REPOST -> {
+				String text;
+				User u=(User) actor;
+				Post post=(Post) object;
+				if(post.getReplyLevel()==0)
+					text=l.get("notification_content_repost_post", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "text", post.getShortTitle()));
+				else
+					text=l.get("notification_content_repost_post_comment", Map.of("name", u.getFirstLastAndGender(),
+							"gender", u.gender, "text", makePostPreview(post, l, tz), "parentText", makePostPreview((Post)relatedObject, l, tz)));
+				yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
+			}
+			case WALL_POST -> {
+				Post post=(Post) object;
+				String preview=post.getShortTitle();
+				if(StringUtils.isNotEmpty(preview))
+					yield makeActorLink(actor)+" "+preview;
+				User u=(User)actor;
+				String text=l.get("notification_content_wall_post", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
+				yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
+			}
+			case INVITE_SIGNUP -> makeActorLink(actor)+" "+l.get("notification_invite_signup", Map.of("gender", ((User)actor).gender));
+			case FOLLOW -> makeActorLink(actor)+" "+l.get("notification_follow", Map.of("gender", ((User)actor).gender));
+			case FRIEND_REQUEST -> {
+				User u=(User)actor;
+				String text=l.get("notification_content_friend_request", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
+				yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
+			}
+			case FRIEND_REQUEST_ACCEPTED -> makeActorLink(actor)+" "+l.get("notification_friend_req_accept", Map.of("gender", ((User)actor).gender));
+			case MAIL_MESSAGE -> {
+				if(showMessageText){
+					MailMessage msg=(MailMessage) object;
+					String preview=msg.getTextPreview();
+					if(StringUtils.isNotEmpty(preview))
+						yield makeActorLink(actor)+" "+preview;
+				}
+				User u=(User)actor;
+				String text=l.get("notification_content_mail_message", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
+				yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
+			}
+			case GROUP_INVITE -> {
+				User u=(User)actor;
+				Group g=(Group)object;
+				String text=l.get("notification_content_group_invite", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "groupName", g.name));
+				yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "group", Map.of("href", g.getProfileURL())));
+			}
+			case EVENT_INVITE -> {
+				User u=(User)actor;
+				Group g=(Group)object;
+				String text=l.get("notification_content_event_invite", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender, "eventName", g.name));
+				yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL()), "event", Map.of("href", g.getProfileURL())));
+			}
+			case GROUP_REQUEST_ACCEPTED -> {
+				String text=l.get("notification_content_group_accepted", Map.of("name", actor.getName()));
+				yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
+			}
+			case PHOTO_TAG -> {
+				User u=(User)actor;
+				String text=l.get("notification_content_photo_tag", Map.of("name", u.getFirstLastAndGender(), "gender", u.gender));
+				yield TextProcessor.substituteLinks(text, Map.of("actor", Map.of("href", actor.getProfileURL())));
+			}
+			case EXPORT_READY -> l.get("notification_content_export_ready", Map.of("time", l.formatDate(((UserDataExport)object).requestedAt, tz, false)));
+		};
+		String url=switch(object){
+			case Post post -> post.getReplyLevel()>0 && relatedObject instanceof Post parentPost ? parentPost.getInternalURL().toString()+"#comment"+post.id : post.getInternalURL().toString();
+			case Photo photo -> photo.getURL();
+			case Comment comment when relatedObject instanceof CommentableContentObject parent -> parent.getURL()+"#comment"+comment.getIDString();
+			case MailMessage msg -> "/my/mail/messages/"+msg.getIdString();
+			case UserDataExport ude -> "/settings/export";
+			case null, default -> actor.getProfileURL();
+		};
+		return new NotificationTexts(title, content, url);
+	}
+
 	private String makeActorLink(Actor actor){
 		return "<a href=\""+actor.getProfileURL()+"\">"+TextProcessor.escapeHTML(actor.getName())+"</a>";
 	}
@@ -576,7 +604,7 @@ public class NotificationsController{
 		return preview;
 	}
 
-	private RealtimeNotification.ObjectType getRealtimeNotificationObjectTypeForObject(OwnedContentObject obj){
+	public RealtimeNotification.ObjectType getRealtimeNotificationObjectTypeForObject(OwnedContentObject obj){
 		return switch(obj){
 			case Post post -> RealtimeNotification.ObjectType.POST;
 			case Photo photo -> RealtimeNotification.ObjectType.PHOTO;

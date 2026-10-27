@@ -64,5 +64,22 @@
   "notification_friend_req_accept_multiple": "приняли ваши заявки в друзья",
   "notification_liked_photo_multiple": "оценили вашу <a id=\"photo\">фотографию</a>",
   "notifications_seen": "Просмотренные уведомления",
-  "notification_content_export_ready": "Архив с вашими данными, который вы запросили {time}, готов для скачивания"
+  "notification_content_export_ready": "Архив с вашими данными, который вы запросили {time}, готов для скачивания",
+  "push_feed_new_post": "Новая запись",
+  "push_feed_new_post_by": "Новая запись от {name}",
+  "push_feed_wall_to_wall": "{gender, select, female {написала} other {написал}} на стене {name}",
+  "push_feed_added_photo": "{gender, select, female {добавила} other {добавил}} фотографию в альбом «{album}»",
+  "push_feed_tagged_in_photo": "{gender, select, female {отмечена} other {отмечен}} на фотографии в альбоме «{album}»",
+  "push_feed_created_topic": "{gender, select, female {создала} other {создал}} тему «{topic}» в группе {group}",
+  "push_feed_added_friend": "{gender, select, female {добавила} other {добавил}} в друзья {name}",
+  "push_feed_joined_group": "{gender, select, female {вступила} other {вступил}} в группу {group}",
+  "push_feed_joined_event": "{gender, select, female {собирается} other {собирается}} на встречу {group}",
+  "push_feed_created_group": "{gender, select, female {создала} other {создал}} группу {group}",
+  "push_feed_created_event": "{gender, select, female {создала} other {создал}} встречу {group}",
+  "push_feed_relationship": "{gender, select, female {изменила} other {изменил}} семейное положение",
+  "push_group_new_topic": "{name} {gender, select, female {создала} other {создал}} тему «{topic}»",
+  "push_group_added_photo": "Новая фотография в альбоме «{album}»",
+  "push_comments_post_title": "Комментарии к записи «{text}»",
+  "push_comments_photo_title": "Комментарии к фотографии",
+  "push_new_comment_by": "Новый комментарий от {name}"
 }

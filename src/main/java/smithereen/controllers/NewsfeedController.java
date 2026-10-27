@@ -241,6 +241,9 @@ public class NewsfeedController{
 		try{
 			friendsNewsFeedCache.evictAll(); // TODO
 			NewsfeedStorage.putFriendsEntry(user.id, objectID, type, time);
+			// An explicit time means the entry is being backfilled, not news
+			if(time==null)
+				context.getWebPushController().sendForFriendsFeedEntry(user, objectID, type);
 		}catch(SQLException x){
 			throw new InternalServerErrorException(x);
 		}
@@ -447,6 +450,8 @@ public class NewsfeedController{
 		try{
 			groupsNewsFeedCache.evictAll(); // TODO
 			NewsfeedStorage.putGroupsEntry(group.id, objectID, type, time);
+			if(time==null)
+				context.getWebPushController().sendForGroupsFeedEntry(group, objectID, type);
 		}catch(SQLException x){
 			throw new InternalServerErrorException(x);
 		}

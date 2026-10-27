@@ -331,5 +331,12 @@
   "settings_web_push_test_body": "Push notifications work. Sent at {time}.",
   "settings_web_push_result_sent": "sent",
   "settings_web_push_result_removed": "the subscription has expired and was removed (HTTP {status})",
-  "settings_web_push_result_failed": "not sent (HTTP {status}) {error}"
+  "settings_web_push_result_failed": "not sent (HTTP {status}) {error}",
+  "settings_push_events": "Push notification events",
+  "settings_push_events_explanation": "What is sent to your devices as push notifications. Everything the site notifies you about, and news from your friends and groups as in the \"My News\" feed.",
+  "settings_push_group_notifications": "Notifications",
+  "settings_push_group_friends": "News from friends",
+  "settings_push_group_groups": "News from groups",
+  "settings_push_group_comments": "Comments",
+  "settings_push_comments_feed": "New comments on posts, photos and topics you commented on"
 }

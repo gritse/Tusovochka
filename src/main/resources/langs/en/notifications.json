@@ -67,5 +67,22 @@
   "notification_friend_req_accept_multiple": "accepted your friend requests",
   "notification_liked_photo_multiple": "liked your <a id=\"photo\">photo</a>",
   "notifications_seen": "Seen notifications",
-  "notification_content_export_ready": "The archive of your data, requested {time}, is ready for download"
+  "notification_content_export_ready": "The archive of your data, requested {time}, is ready for download",
+  "push_feed_new_post": "New post",
+  "push_feed_new_post_by": "New post by {name}",
+  "push_feed_wall_to_wall": "posted on the wall of {name}",
+  "push_feed_added_photo": "added a photo to the album \"{album}\"",
+  "push_feed_tagged_in_photo": "was tagged in a photo in the album \"{album}\"",
+  "push_feed_created_topic": "started the topic \"{topic}\" in the group {group}",
+  "push_feed_added_friend": "added {name} as a friend",
+  "push_feed_joined_group": "joined the group {group}",
+  "push_feed_joined_event": "is attending the event {group}",
+  "push_feed_created_group": "created the group {group}",
+  "push_feed_created_event": "created the event {group}",
+  "push_feed_relationship": "updated their relationship status",
+  "push_group_new_topic": "{name} started the topic \"{topic}\"",
+  "push_group_added_photo": "New photo in the album \"{album}\"",
+  "push_comments_post_title": "Comments on the post \"{text}\"",
+  "push_comments_photo_title": "Comments on a photo",
+  "push_new_comment_by": "New comment by {name}"
 }

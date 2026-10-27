@@ -331,5 +331,12 @@
   "settings_web_push_test_body": "Push-уведомления работают. Отправлено в {time}.",
   "settings_web_push_result_sent": "отправлено",
   "settings_web_push_result_removed": "подписка истекла и удалена (HTTP {status})",
-  "settings_web_push_result_failed": "не отправлено (HTTP {status}) {error}"
+  "settings_web_push_result_failed": "не отправлено (HTTP {status}) {error}",
+  "settings_push_events": "События для push-уведомлений",
+  "settings_push_events_explanation": "Что отправлять на ваши устройства в виде push-уведомлений. Всё, о чём уведомляет сайт, а также новости друзей и групп, как в разделе «Мои Новости».",
+  "settings_push_group_notifications": "Уведомления",
+  "settings_push_group_friends": "Новости друзей",
+  "settings_push_group_groups": "Новости групп",
+  "settings_push_group_comments": "Комментарии",
+  "settings_push_comments_feed": "Новые комментарии к записям, фотографиям и темам, которые вы комментировали"
 }

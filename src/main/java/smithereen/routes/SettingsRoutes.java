@@ -70,6 +70,7 @@ import smithereen.model.filtering.WordFilter;
 import smithereen.model.media.MediaFileRecord;
 import smithereen.model.notifications.EmailNotificationFrequency;
 import smithereen.model.notifications.EmailNotificationType;
+import smithereen.model.notifications.PushNotificationType;
 import smithereen.model.notifications.RealtimeNotificationSettingType;
 import smithereen.model.notifications.WebPushSubscription;
 import smithereen.model.photos.AvatarCropRects;
@@ -840,10 +841,44 @@ public class SettingsRoutes{
 				.addMessage(req, "settings.emailNotificationsMessage", "emailNotificationsMessage")
 				.with("webPushSubscriptions", webPushSubscriptions)
 				.with("webPushEndpoints", webPushSubscriptions.stream().map(WebPushSubscription::endpoint).toList())
-				.with("webPushPublicKey", Base64.getUrlEncoder().withoutPadding().encodeToString(Config.webPushPublicKey));
+				.with("webPushPublicKey", Base64.getUrlEncoder().withoutPadding().encodeToString(Config.webPushPublicKey))
+				.with("pushTypes", self.prefs.getPushTypes())
+				.with("pushTypeGroups", pushTypeGroups())
+				.addMessage(req, "settings.pushNotificationsMessage", "pushNotificationsMessage");
 		jsLangKey(req, "settings_web_push_this_device_on", "settings_web_push_this_device_off", "settings_web_push_unsupported",
 				"settings_web_push_ios_install", "settings_web_push_denied", "settings_web_push_no_https");
 		return model;
+	}
+
+	/**
+	 * The push notification types in the order the settings page shows them, one entry per heading.
+	 */
+	private static List<Map<String, Object>> pushTypeGroups() {
+		List<Map<String, Object>> groups = new ArrayList<>();
+		for (PushNotificationType.Group group : PushNotificationType.Group.values()) {
+			String langKey = switch (group) {
+				case NOTIFICATIONS -> "settings_push_group_notifications";
+				case FRIENDS_FEED -> "settings_push_group_friends";
+				case GROUPS_FEED -> "settings_push_group_groups";
+				case COMMENTS_FEED -> "settings_push_group_comments";
+			};
+			groups.add(Map.of("langKey", langKey, "types", Arrays.stream(PushNotificationType.values()).filter(t -> t.getGroup() == group).toList()));
+		}
+		return groups;
+	}
+
+	public static Object updatePushNotificationSettings(Request req, Response resp, Account self, ApplicationContext ctx) {
+		EnumSet<PushNotificationType> types = EnumSet.noneOf(PushNotificationType.class);
+		for (PushNotificationType type : PushNotificationType.values()) {
+			if (req.queryParams("type_" + type) != null)
+				types.add(type);
+		}
+		ctx.getWebPushController().setPushTypes(self, types);
+		req.session().attribute("settings.pushNotificationsMessage", lang(req).get("settings_saved"));
+		if (isAjax(req))
+			return new WebDeltaResponse(resp).refresh();
+		resp.redirect(back(req));
+		return "";
 	}
 
 	public static Object webPushSubscribe(Request req, Response resp, Account self, ApplicationContext ctx) {
