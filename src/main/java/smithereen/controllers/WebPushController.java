@@ -299,7 +299,7 @@ public class WebPushController {
 					case CommentableContentObject cco -> cco.getURL() + "#comment" + ((Comment) comment).getIDString();
 					default -> throw new IllegalStateException();
 				};
-				FeedItem item = new FeedItem("comment:" + comment.getObjectID(), (l, tz) -> {
+				FeedItem item = new FeedItem("comment:" + comment.getObjectID(), Set.of(author.id), (l, tz) -> {
 					String title = switch (parent) {
 						case Post post -> l.get("push_comments_post_title", Map.of("text", textPreview(post)));
 						case Photo photo -> l.get("push_comments_photo_title");
@@ -319,9 +319,11 @@ public class WebPushController {
 	/**
 	 * A feed entry ready to be pushed: how to word it in a given language, and whether a given recipient may see it.
 	 * {@code key} identifies the underlying object: a topic is news in both the friends and the groups feed, and a
-	 * user who is a friend of its author and a member of its group must still get it only once.
+	 * user who is a friend of its author and a member of its group must still get it only once. {@code actorIDs} are
+	 * the people who did the thing; they may well be among the recipients (a group member who posted in the group,
+	 * a follower of the friend on whose wall they wrote) and are never told about their own doing.
 	 */
-	private record FeedItem(String key, BiFunction<Lang, ZoneId, Message> texts, Function<User, Boolean> visibleTo) {}
+	private record FeedItem(String key, Set<Integer> actorIDs, BiFunction<Lang, ZoneId, Message> texts, Function<User, Boolean> visibleTo) {}
 
 	private FeedItem loadFriendsFeedItem(User author, long objectID, NewsfeedEntry.Type type) {
 		return switch (type) {
@@ -330,7 +332,7 @@ public class WebPushController {
 				User postAuthor = post.authorID == author.id ? author : context.getUsersController().getUserOrThrow(post.authorID);
 				String preview = textPreview(post);
 				String url = post.getInternalURL().toString();
-				yield new FeedItem("post:" + post.id, (l, tz) -> {
+				yield new FeedItem("post:" + post.id, Set.of(post.authorID), (l, tz) -> {
 					String body;
 					if (post.ownerID != post.authorID) {
 						// Someone else wrote on the friend's wall: that is news about the friend, as in the feed
@@ -351,7 +353,7 @@ public class WebPushController {
 				PhotoAlbum album = context.getPhotosController().getAlbumIgnoringPrivacy(photo.albumID);
 				User albumOwner = album.ownerID == author.id ? author : album.ownerID > 0 ? context.getUsersController().getUserOrThrow(album.ownerID) : null;
 				String url = photo.getURL();
-				yield new FeedItem(type + ":" + photo.id, (l, tz) -> new Message(author.getFullName(),
+				yield new FeedItem(type + ":" + photo.id, Set.of(author.id, photo.authorID), (l, tz) -> new Message(author.getFullName(),
 						l.get(type == NewsfeedEntry.Type.ADD_PHOTO ? "push_feed_added_photo" : "push_feed_tagged_in_photo", Map.of("album", album.title, "gender", author.gender)),
 						url, avatarURL(author)),
 						recipient -> albumOwner == null || context.getPrivacyController().checkUserPrivacy(recipient, albumOwner, album.viewPrivacy));
@@ -359,13 +361,13 @@ public class WebPushController {
 			case BOARD_TOPIC -> {
 				BoardTopic topic = context.getBoardController().getTopicIgnoringPrivacy(objectID);
 				Group group = context.getGroupsController().getGroupOrThrow(topic.groupID);
-				yield new FeedItem("topic:" + topic.id, (l, tz) -> new Message(author.getFullName(),
+				yield new FeedItem("topic:" + topic.id, Set.of(topic.authorID), (l, tz) -> new Message(author.getFullName(),
 						l.get("push_feed_created_topic", Map.of("group", group.name, "topic", topic.title, "gender", author.gender)), topic.getURL(), avatarURL(author)),
 						recipient -> group.accessType == Group.AccessType.OPEN || context.getPrivacyController().canUserAccessGroupContent(recipient, group));
 			}
 			case ADD_FRIEND -> {
 				User friend = context.getUsersController().getUserOrThrow((int) objectID);
-				yield new FeedItem("friend:" + author.id + ":" + friend.id, (l, tz) -> new Message(author.getFullName(),
+				yield new FeedItem("friend:" + author.id + ":" + friend.id, Set.of(author.id, friend.id), (l, tz) -> new Message(author.getFullName(),
 						l.get("push_feed_added_friend", Map.of("name", friend.getFullName(), "gender", author.gender)), friend.getProfileURL(), avatarURL(author)), null);
 			}
 			case JOIN_GROUP, JOIN_EVENT, CREATE_GROUP, CREATE_EVENT -> {
@@ -376,10 +378,10 @@ public class WebPushController {
 					case CREATE_GROUP -> "push_feed_created_group";
 					default -> "push_feed_created_event";
 				};
-				yield new FeedItem(type + ":" + author.id + ":" + group.id, (l, tz) -> new Message(author.getFullName(),
+				yield new FeedItem(type + ":" + author.id + ":" + group.id, Set.of(author.id), (l, tz) -> new Message(author.getFullName(),
 						l.get(key, Map.of("group", group.name, "gender", author.gender)), group.getProfileURL(), avatarURL(author)), null);
 			}
-			case RELATIONSHIP_STATUS -> new FeedItem("relationship:" + author.id + ":" + objectID, (l, tz) -> new Message(author.getFullName(),
+			case RELATIONSHIP_STATUS -> new FeedItem("relationship:" + author.id + ":" + objectID, Set.of(author.id), (l, tz) -> new Message(author.getFullName(),
 					l.get("push_feed_relationship", Map.of("gender", author.gender)), author.getProfileURL(), avatarURL(author)), null);
 			default -> null;
 		};
@@ -392,20 +394,20 @@ public class WebPushController {
 				User postAuthor = context.getUsersController().getUserOrThrow(post.authorID);
 				String preview = textPreview(post);
 				String url = post.getInternalURL().toString();
-				yield new FeedItem("post:" + post.id, (l, tz) -> new Message(group.name,
+				yield new FeedItem("post:" + post.id, Set.of(post.authorID), (l, tz) -> new Message(group.name,
 						StringUtils.isEmpty(preview) ? l.get("push_feed_new_post_by", Map.of("name", postAuthor.getFullName())) : postAuthor.getFullName() + ": " + preview,
 						url, avatarURL(group)), null);
 			}
 			case BOARD_TOPIC -> {
 				BoardTopic topic = context.getBoardController().getTopicIgnoringPrivacy(objectID);
 				User topicAuthor = context.getUsersController().getUserOrThrow(topic.authorID);
-				yield new FeedItem("topic:" + topic.id, (l, tz) -> new Message(group.name,
+				yield new FeedItem("topic:" + topic.id, Set.of(topic.authorID), (l, tz) -> new Message(group.name,
 						l.get("push_group_new_topic", Map.of("name", topicAuthor.getFullName(), "topic", topic.title, "gender", topicAuthor.gender)), topic.getURL(), avatarURL(group)), null);
 			}
 			case ADD_PHOTO -> {
 				Photo photo = context.getPhotosController().getPhotoIgnoringPrivacy(objectID);
 				PhotoAlbum album = context.getPhotosController().getAlbumIgnoringPrivacy(photo.albumID);
-				yield new FeedItem("ADD_PHOTO:" + photo.id, (l, tz) -> new Message(group.name, l.get("push_group_added_photo", Map.of("album", album.title)), photo.getURL(), avatarURL(group)), null);
+				yield new FeedItem("ADD_PHOTO:" + photo.id, Set.of(photo.authorID), (l, tz) -> new Message(group.name, l.get("push_group_added_photo", Map.of("album", album.title)), photo.getURL(), avatarURL(group)), null);
 			}
 			default -> null;
 		};
@@ -438,6 +440,8 @@ public class WebPushController {
 		}
 		HashMap<Lang, Message> messages = new HashMap<>();
 		for (Account account : recipients.values()) {
+			if (item.actorIDs().contains(account.user.id))
+				continue;
 			try {
 				if (source instanceof User sourceUser && (context.getPrivacyController().isUserBlocked(account.user, sourceUser) || context.getPrivacyController().isUserBlocked(sourceUser, account.user)))
 					continue;
