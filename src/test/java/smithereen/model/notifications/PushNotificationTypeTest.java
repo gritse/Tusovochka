@@ -18,6 +18,10 @@ public class PushNotificationTypeTest {
 		for (PushNotificationType type : PushNotificationType.values()) {
 			assertTrue(en.containsKey(type.getLangKey()), type + " has no English name");
 			assertTrue(ru.containsKey(type.getLangKey()), type + " has no Russian name");
+			if (type.getHintLangKey() != null) {
+				assertTrue(en.containsKey(type.getHintLangKey()), type + " has no English hint");
+				assertTrue(ru.containsKey(type.getHintLangKey()), type + " has no Russian hint");
+			}
 			assertNotNull(type.getGroup());
 		}
 	}

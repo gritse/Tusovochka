@@ -120,6 +120,13 @@ public enum PushNotificationType implements TranslatableEnum<PushNotificationTyp
 		};
 	}
 
+	/**
+	 * A longer description for the hover hint in the settings, or null where the short name says it all.
+	 */
+	public String getHintLangKey() {
+		return getGroup() == Group.NOTIFICATIONS ? null : getLangKey() + "_hint";
+	}
+
 	@Override
 	public String getLangKey() {
 		return switch (this) {

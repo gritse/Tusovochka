@@ -106,7 +106,7 @@
 		<div class="text">
 			{% for type in group.types %}
 			<div class="radioButtonWrap">
-				<label><input type="checkbox" name="type_{{ type }}" {{ pushTypes contains type ? 'checked' : '' }}/>{{ L(type.langKey) }}</label>
+				<label{% if type.hintLangKey is not null %} title="{{ L(type.hintLangKey) }}"{% endif %}><input type="checkbox" name="type_{{ type }}" {{ pushTypes contains type ? 'checked' : '' }}/>{{ L(type.langKey) }}</label>
 			</div>
 			{% endfor %}
 		</div>

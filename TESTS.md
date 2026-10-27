@@ -273,7 +273,7 @@ does not), either through the UI or with
 5. Admin joins a group yulia created, yulia posts and starts a topic there: one push per event, titled with the
    group's name. The topic is news in both the friends and the groups feed but arrives once.
 6. Upload several photos to an album at once: a single "added a photo to the album …" push, not one per photo.
-7. Turn "Friends → A friend published a post" off: step 3 pushes nothing; the groups and comments pushes still arrive.
+7. Turn "Friends → Posts" off (hovering a name shows what it covers): step 3 pushes nothing; the groups and comments pushes still arrive.
 8. Nobody is told about their own doing: posting in a group one is a member of, or on a friend's wall, pushes nothing
    to the author. Deleting anything pushes nothing to anyone.
 
