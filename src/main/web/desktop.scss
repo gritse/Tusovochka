@@ -1418,6 +1418,14 @@ select, .comboBoxW input{
 	background: $bgGrey;
 }
 
+.settingsSpoiler{
+	margin: 24px 8px 8px;
+	>summary{
+		cursor: pointer;
+		color: $auxiliaryGrey;
+	}
+}
+
 .profileBelowAva{
 	background: $blockUnderboxBackground;
 	text-align: center;

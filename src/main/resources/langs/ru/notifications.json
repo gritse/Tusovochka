@@ -79,7 +79,5 @@
   "push_feed_relationship": "{gender, select, female {изменила} other {изменил}} семейное положение",
   "push_group_new_topic": "{name} {gender, select, female {создала} other {создал}} тему «{topic}»",
   "push_group_added_photo": "Новая фотография в альбоме «{album}»",
-  "push_comments_post_title": "Комментарии к записи «{text}»",
-  "push_comments_photo_title": "Комментарии к фотографии",
-  "push_new_comment_by": "Новый комментарий от {name}"
+  "push_new_comment": "Новый комментарий"
 }

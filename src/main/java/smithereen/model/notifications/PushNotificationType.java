@@ -124,15 +124,8 @@ public enum PushNotificationType implements TranslatableEnum<PushNotificationTyp
 	public String getLangKey() {
 		return switch (this) {
 			case MAIL, FRIEND_REQUESTS, LIKES, REPOSTS, REPLIES, WALL, MENTIONS, PHOTO_TAGS, GROUP_INVITES -> "settings_notifications_" + toString().toLowerCase();
-			case FRIENDS_POSTS, GROUPS_POSTS -> "feed_type_posts";
-			case FRIENDS_PHOTOS, GROUPS_PHOTOS -> "feed_type_photos";
-			case FRIENDS_TOPICS, GROUPS_TOPICS -> "feed_type_board_topics";
-			case FRIENDS_FRIENDS -> "feed_type_friends";
-			case FRIENDS_GROUPS -> "feed_type_groups";
-			case FRIENDS_EVENTS -> "feed_type_events";
-			case FRIENDS_PHOTO_TAGS -> "feed_type_tags";
-			case FRIENDS_PERSONAL_INFO -> "feed_type_personal";
 			case COMMENTS -> "settings_push_comments_feed";
+			default -> "settings_push_" + toString().toLowerCase();
 		};
 	}
 }

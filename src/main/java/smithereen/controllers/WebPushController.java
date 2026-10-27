@@ -202,7 +202,18 @@ public class WebPushController {
 				RealtimeNotification.ObjectType objType = object instanceof OwnedContentObject owned ? context.getNotificationsController().getRealtimeNotificationObjectTypeForObject(owned) : null;
 				NotificationsController.NotificationTexts texts = context.getNotificationsController().buildNotificationTexts(type, objType, object, relatedObject, actor,
 						l, timeZoneFor(account), account.prefs.notifierShowMessageText);
-				deliver(account, subs, new Message(texts.title(), TextProcessor.stripHTML(texts.content(), false), texts.url(), avatarURL(actor)));
+				String title = texts.title();
+				String body = TextProcessor.stripHTML(texts.content(), false);
+				// Like a messaging app: who did it as the title, what they wrote or did as the body. The notifier's
+				// content always starts with the actor's name, as a link.
+				if (actor != null) {
+					String name = actor.getName();
+					if (body.startsWith(name))
+						body = body.substring(name.length()).strip();
+					if (!body.isEmpty())
+						title = name;
+				}
+				deliver(account, subs, new Message(title, body, texts.url(), avatarURL(actor)));
 			} catch (Exception x) {
 				LOG.warn("Failed to push a {} notification to account {}", type, account.id, x);
 			}
@@ -299,16 +310,8 @@ public class WebPushController {
 					case CommentableContentObject cco -> cco.getURL() + "#comment" + ((Comment) comment).getIDString();
 					default -> throw new IllegalStateException();
 				};
-				FeedItem item = new FeedItem("comment:" + comment.getObjectID(), Set.of(author.id), (l, tz) -> {
-					String title = switch (parent) {
-						case Post post -> l.get("push_comments_post_title", Map.of("text", textPreview(post)));
-						case Photo photo -> l.get("push_comments_photo_title");
-						case BoardTopic topic -> topic.title;
-						default -> throw new IllegalStateException();
-					};
-					String body = StringUtils.isEmpty(preview) ? l.get("push_new_comment_by", Map.of("name", author.getFullName())) : author.getFullName() + ": " + preview;
-					return new Message(title, body, url, avatarURL(author));
-				}, null);
+				FeedItem item = new FeedItem("comment:" + comment.getObjectID(), Set.of(author.id),
+						(l, tz) -> new Message(author.getFullName(), StringUtils.isEmpty(preview) ? l.get("push_new_comment") : preview, url, avatarURL(author)), null);
 				fanOut(recipients, author, item);
 			} catch (Exception x) {
 				LOG.warn("Failed to push comment {} on {} {}", comment.getObjectID(), feedType, parentID, x);
@@ -319,11 +322,12 @@ public class WebPushController {
 	/**
 	 * A feed entry ready to be pushed: how to word it in a given language, and whether a given recipient may see it.
 	 * {@code key} identifies the underlying object: a topic is news in both the friends and the groups feed, and a
-	 * user who is a friend of its author and a member of its group must still get it only once. {@code actorIDs} are
-	 * the people who did the thing; they may well be among the recipients (a group member who posted in the group,
-	 * a follower of the friend on whose wall they wrote) and are never told about their own doing.
+	 * user who is a friend of its author and a member of its group must still get it only once. {@code skipUserIDs} are
+	 * the people who did the thing, and those already told about it by a notification of their own (the mentioned);
+	 * they may well be among the recipients (a group member who posted in the group, a follower of the friend on
+	 * whose wall they wrote) and are not told again.
 	 */
-	private record FeedItem(String key, Set<Integer> actorIDs, BiFunction<Lang, ZoneId, Message> texts, Function<User, Boolean> visibleTo) {}
+	private record FeedItem(String key, Set<Integer> skipUserIDs, BiFunction<Lang, ZoneId, Message> texts, Function<User, Boolean> visibleTo) {}
 
 	private FeedItem loadFriendsFeedItem(User author, long objectID, NewsfeedEntry.Type type) {
 		return switch (type) {
@@ -332,7 +336,9 @@ public class WebPushController {
 				User postAuthor = post.authorID == author.id ? author : context.getUsersController().getUserOrThrow(post.authorID);
 				String preview = textPreview(post);
 				String url = post.getInternalURL().toString();
-				yield new FeedItem("post:" + post.id, Set.of(post.authorID), (l, tz) -> {
+				HashSet<Integer> skip = new HashSet<>(post.mentionedUserIDs);
+				skip.add(post.authorID);
+				yield new FeedItem("post:" + post.id, skip, (l, tz) -> {
 					String body;
 					if (post.ownerID != post.authorID) {
 						// Someone else wrote on the friend's wall: that is news about the friend, as in the feed
@@ -394,7 +400,9 @@ public class WebPushController {
 				User postAuthor = context.getUsersController().getUserOrThrow(post.authorID);
 				String preview = textPreview(post);
 				String url = post.getInternalURL().toString();
-				yield new FeedItem("post:" + post.id, Set.of(post.authorID), (l, tz) -> new Message(group.name,
+				HashSet<Integer> skip = new HashSet<>(post.mentionedUserIDs);
+				skip.add(post.authorID);
+				yield new FeedItem("post:" + post.id, skip, (l, tz) -> new Message(group.name,
 						StringUtils.isEmpty(preview) ? l.get("push_feed_new_post_by", Map.of("name", postAuthor.getFullName())) : postAuthor.getFullName() + ": " + preview,
 						url, avatarURL(group)), null);
 			}
@@ -440,7 +448,7 @@ public class WebPushController {
 		}
 		HashMap<Lang, Message> messages = new HashMap<>();
 		for (Account account : recipients.values()) {
-			if (item.actorIDs().contains(account.user.id))
+			if (item.skipUserIDs().contains(account.user.id))
 				continue;
 			try {
 				if (source instanceof User sourceUser && (context.getPrivacyController().isUserBlocked(account.user, sourceUser) || context.getPrivacyController().isUserBlocked(sourceUser, account.user)))

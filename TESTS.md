@@ -258,18 +258,22 @@ which is the quickest way to check the wording without a phone. Make `admin` and
 does not), either through the UI or with
 `INSERT INTO followings (follower_id, followee_id, mutual, accepted) VALUES (1,2,1,1),(2,1,1,1)`.
 
-1. "Push notification events" at the bottom of `/settings/notifications` lists four groups: Notifications, News from
-   friends, News from groups, Comments. Untick "Likes", save, reload: it stays unticked, the rest stays as it was.
-2. Everything the site notifies about pushes with the same wording as the on-site notifier: yulia writes on admin's
-   wall ("New wall post"), comments on admin's post ("New comment"), replies to admin's comment ("New reply"), sends a
-   message ("New message", with the text only when "Show message text" is on). A like pushes nothing while "Likes" is off.
+1. "Push notifications" at the bottom of `/settings/notifications` has the device controls, then four groups of
+   events: Notifications, Friends, Groups, Comments. Untick "Likes", save, reload: it stays unticked, the rest stays
+   as it was. The "Send a test notification" button is behind the "Debug" spoiler below.
+2. Everything the site notifies about pushes like a messaging app, with the person as the title and what they wrote
+   or did as the body: yulia writes on admin's wall, comments on admin's post, replies to admin's comment, sends a
+   message (the text only when "Show message text" is on, otherwise "sent you a message"), likes admin's post
+   ("likes your post …", nothing while "Likes" is off).
 3. Yulia posts on her own wall: admin gets a push titled with her name and the first words of the post. Posts by
    others on her wall come as "posted on the wall of …", and are not sent to friends her "who can see others'
    posts on my wall" setting excludes.
-4. Admin and yulia both comment on a post, then maria comments on it: admin gets "Comments on the post …", while
-   yulia, as the post author, gets the regular "New comment" and not a second push.
+4. Admin and yulia both comment on a post, then maria comments on it: admin gets maria's name and her comment, while
+   yulia, as the post author, gets it as a regular comment notification and not a second push.
 5. Admin joins a group yulia created, yulia posts and starts a topic there: one push per event, titled with the
    group's name. The topic is news in both the friends and the groups feed but arrives once.
 6. Upload several photos to an album at once: a single "added a photo to the album …" push, not one per photo.
-7. Turn "News from friends → Posts" off: step 3 pushes nothing; the groups and comments pushes still arrive.
+7. Turn "Friends → A friend published a post" off: step 3 pushes nothing; the groups and comments pushes still arrive.
+8. Nobody is told about their own doing: posting in a group one is a member of, or on a friend's wall, pushes nothing
+   to the author. Deleting anything pushes nothing to anyone.
 

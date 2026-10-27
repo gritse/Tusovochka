@@ -71,8 +71,8 @@
 		{{ form.footer(L('save')) }}
 	{{ form.end() }}
 	</form>
-	<form action="/settings/webPush/test?csrf={{ csrf }}" method="post" data-ajax>
-	{{ form.start("webPush", null) }}
+	<form action="/settings/updatePushNotifications?csrf={{ csrf }}" method="post" data-ajax>
+	{{ form.start("pushNotifications", pushNotificationsMessage) }}
 		<h2>{{ L('settings_web_push') }}</h2>
 		{{ form.unlabeledRowStart() }}
 		<div class="formExplanation">{{ L('settings_web_push_explanation') }}</div>
@@ -99,15 +99,6 @@
 			{% endfor %}
 		</div>
 		{{ form.customControlEnd() }}
-		{{ form.footer(L('settings_web_push_test')) }}
-	{{ form.end() }}
-	</form>
-	<form action="/settings/updatePushNotifications?csrf={{ csrf }}" method="post" data-ajax>
-	{{ form.start("pushNotifications", pushNotificationsMessage) }}
-		<h2>{{ L('settings_push_events') }}</h2>
-		{{ form.unlabeledRowStart() }}
-		<div class="formExplanation">{{ L('settings_push_events_explanation') }}</div>
-		{{ form.unlabeledRowEnd() }}
 		{% for group in pushTypeGroups %}
 		{{ form.customControlStart('pushTypes_' ~ loop.index) }}
 		{{ L(group.langKey) }}:
@@ -124,6 +115,17 @@
 		{{ form.footer(L('save')) }}
 	{{ form.end() }}
 	</form>
+	<details class="settingsSpoiler">
+		<summary>{{ L('settings_web_push_debug') }}</summary>
+		<form action="/settings/webPush/test?csrf={{ csrf }}" method="post" data-ajax>
+		{{ form.start("webPushTest", null) }}
+			{{ form.unlabeledRowStart() }}
+			<div class="formExplanation">{{ L('settings_web_push_test_explanation') }}</div>
+			{{ form.unlabeledRowEnd() }}
+			{{ form.footer(L('settings_web_push_test')) }}
+		{{ form.end() }}
+		</form>
+	</details>
 </div>
 {% script %}
 initWebPushSettings("{{ webPushPublicKey }}", {{ json(webPushEndpoints) | raw }});

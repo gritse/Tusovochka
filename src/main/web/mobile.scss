@@ -713,6 +713,14 @@ select{
 	}
 }
 
+.settingsSpoiler{
+	margin: 24px 16px 8px;
+	>summary{
+		cursor: pointer;
+		color: $auxiliaryGrey;
+	}
+}
+
 .friendsRow{
 	border-spacing: 0;
 	margin-bottom: 8px;
