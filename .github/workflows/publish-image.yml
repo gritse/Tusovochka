@@ -1,23 +1,38 @@
 name: Build and publish Docker image
 
-# Manual only. Always builds the latest commit on master, whatever branch the
-# run was started from, and publishes the result to the GitHub Container
-# Registry of this repository.
+# Runs on every push to master, except pushes that only touch files the image
+# doesn't contain (the Claude Code channel, docs, top-level Markdown), and can
+# also be started by hand. A push builds the pushed commit; a manual run always
+# builds the latest commit on master, whatever branch it was started from. The
+# result is published to the GitHub Container Registry of this repository.
 on:
+    push:
+        branches:
+            - master
+        paths-ignore:
+            - channel/**
+            - docs/**
+            - '*.md'
     workflow_dispatch:
 
 permissions:
     contents: read
     packages: write
 
+# Pushes in quick succession build one at a time, oldest first, so "latest" always ends up on the newest commit.
+# A run that is still waiting is replaced by a newer one instead of building a commit that is already outdated.
+concurrency:
+    group: publish-image
+    cancel-in-progress: false
+
 jobs:
     build_and_push:
         runs-on: ubuntu-latest
         steps:
-            - name: Check out master
+            - name: Check out
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
-                  ref: master
+                  ref: ${{ github.event_name == 'push' && github.sha || 'master' }}
                   fetch-depth: 0 # the build derives its version from git tags
 
             - name: Log in to the GitHub Container Registry
