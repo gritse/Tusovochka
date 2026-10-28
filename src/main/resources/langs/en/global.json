@@ -47,6 +47,8 @@
   "attach_menu_photo": "Photo",
   "attach_menu_photo_upload": "Photo from your device",
   "attach_menu_photo_from_album": "Photo from album",
+  "attach_menu_video_upload": "Video from your device",
+  "attach_menu_audio_upload": "Audio from your device",
   "attach_menu_cw": "Content Warning",
   "network_error": "Network error. Please check your connection and try again.",
   "domain": "Domain",

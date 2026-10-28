@@ -274,7 +274,7 @@ public class Templates{
 				"graffiti_clear", "graffiti_undo", "graffiti_clear_confirm", "graffiti_close_confirm", "confirm_title", "graffiti_color", "graffiti_thickness", "graffiti_opacity", "attach"
 			);
 		if(Utils.isMobile(req)){
-			Utils.jsLangKey(req, "attach_menu_photo_upload", "attach_menu_photo_from_album");
+			Utils.jsLangKey(req, "attach_menu_photo_upload", "attach_menu_photo_from_album", "attach_menu_video_upload", "attach_menu_audio_upload");
 		}
 	}
 

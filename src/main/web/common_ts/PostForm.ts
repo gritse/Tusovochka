@@ -79,7 +79,7 @@ class PostForm{
 		this.attachContainer=ge("postFormAttachments_"+this.id);
 		this.attachContainer2=ge("postFormAttachments2_"+this.id);
 		this.fileField=ce("input", {type: "file"});
-		this.fileField.accept="image/*"+(PostForm.videoUploadsEnabled() ? ",video/*" : "")+(PostForm.audioUploadsEnabled() ? ",audio/*" : "");
+		this.fileField.accept=PostForm.uploadAccept();
 		this.fileField.multiple=true;
 		this.attachField=el.querySelector("input[name=attachments]") as HTMLInputElement;
 		this.replyToField=ge("postFormReplyTo_"+this.id);
@@ -262,6 +262,16 @@ class PostForm{
 
 	private static audioUploadsEnabled():boolean{
 		return !!(userConfig.uploads && userConfig.uploads.audioEnabled);
+	}
+
+	private static uploadAccept():string {
+		return "image/*"+(PostForm.videoUploadsEnabled() ? ",video/*" : "")+(PostForm.audioUploadsEnabled() ? ",audio/*" : "");
+	}
+
+	// The accept filter decides which picker a phone opens, so each attach menu item sets its own
+	private openFilePicker(accept:string) {
+		this.fileField.accept = accept;
+		this.fileField.click();
 	}
 
 	private static maxUploadSize(f:Blob):number{
@@ -706,11 +716,17 @@ class PostForm{
 		var opts:any[]=[];
 		if(this.canAddAttachment("photo")){
 			opts.push({label: lang("attach_menu_photo_upload"), onclick: ()=>{
-				this.fileField.click();
+				this.openFilePicker("image/*");
 			}});
 			opts.push({label: lang("attach_menu_photo_from_album"), onclick: ()=>{
 				this.onAttachPhotoClick();
 			}});
+		}
+		if (this.canAddAttachment("video") && PostForm.videoUploadsEnabled()) {
+			opts.push({label: lang("attach_menu_video_upload"), onclick: () => this.openFilePicker("video/*")});
+		}
+		if (this.canAddAttachment("audio") && PostForm.audioUploadsEnabled()) {
+			opts.push({label: lang("attach_menu_audio_upload"), onclick: () => this.openFilePicker("audio/*")});
 		}
 		if(this.canAddAttachment("poll") && !this.pollLayout && !this.isMobileComment){
 			opts.push({label: lang("attach_menu_poll"), onclick: this.showPollLayout.bind(this)});
@@ -864,7 +880,7 @@ class PostForm{
 		var dropText=ge("attachUploadDropText");
 		var dragCount=0;
 		upload.addEventListener("click", (ev)=>{
-			form.fileField.click();
+			form.openFilePicker(PostForm.uploadAccept());
 		});
 		upload.addEventListener("drop", (ev)=>{
 			dragCount=0;

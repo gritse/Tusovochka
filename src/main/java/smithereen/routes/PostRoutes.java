@@ -598,7 +598,7 @@ public class PostRoutes{
 		}
 		jsLangKey(req, "yes", "no", "cancel", "delete_post", "delete_post_confirm", "delete_reply", "delete_reply_confirm", "delete", "post_form_cw", "post_form_cw_placeholder", "attach_menu_photo", "attach_menu_cw");
 		if(isMobile(req)){
-			jsLangKey(req, "attach_menu_photo_upload", "attach_menu_photo_from_album");
+			jsLangKey(req, "attach_menu_photo_upload", "attach_menu_photo_from_album", "attach_menu_video_upload", "attach_menu_audio_upload");
 		}
 		String shortTitle=post.post.getShortTitle(50).strip();
 		if(shortTitle.isEmpty())
