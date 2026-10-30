@@ -64,8 +64,8 @@ public class NewsfeedController{
 
 	// region Friends feed
 	public PaginatedList<NewsfeedEntry> getFriendsFeed(Account self, EnumSet<FriendsNewsfeedTypeFilter> filter, ZoneId timeZone, int startFrom, int offset, int count, boolean includeMuted){
+		FriendsFeedCacheKey cacheKey = new FriendsFeedCacheKey(self.user.id, EnumSet.copyOf(filter), includeMuted);
 		try{
-			FriendsFeedCacheKey cacheKey=new FriendsFeedCacheKey(self.user.id, EnumSet.copyOf(filter), includeMuted);
 			CachedFeed cache;
 			synchronized(this){
 				cache=friendsNewsFeedCache.get(cacheKey);
@@ -157,12 +157,9 @@ public class NewsfeedController{
 						Map<Long, Photo> photos=context.getPhotosController().getPhotosIgnoringPrivacy(needPhotos);
 						Set<Long> needAlbums=photos.values().stream().map(p->p.albumID).collect(Collectors.toSet());
 						Map<Long, PhotoAlbum> albums=context.getPhotosController().getAlbumsIgnoringPrivacy(needAlbums);
-						Map<Integer, User> owners=context.getUsersController().getUsers(albums.values().stream().map(a->a.ownerID).filter(id->id>0).collect(Collectors.toSet()));
-						Set<Long> inaccessibleAlbums=albums.values().stream()
-								.filter(a->!context.getPrivacyController().checkUserPrivacy(self.user, owners.get(a.ownerID), a.viewPrivacy))
-								.map(a->a.id)
-								.collect(Collectors.toSet());
-						newPage.removeIf(e->(e.type==NewsfeedEntry.Type.ADD_PHOTO) && (!photos.containsKey(e.objectID) || inaccessibleAlbums.contains(photos.get(e.objectID).albumID)));
+						Set<Long> inaccessibleAlbums = getInaccessibleAlbumIDs(self.user, albums.values());
+						newPage.removeIf(e -> (e.type == NewsfeedEntry.Type.ADD_PHOTO || e.type == NewsfeedEntry.Type.PHOTO_TAG)
+								&& (!photos.containsKey(e.objectID) || !albums.containsKey(photos.get(e.objectID).albumID) || inaccessibleAlbums.contains(photos.get(e.objectID).albumID)));
 						for(NewsfeedEntry e:newPage){
 							if(e.type==NewsfeedEntry.Type.ADD_PHOTO || e.type==NewsfeedEntry.Type.PHOTO_TAG){
 								e.extraData=Map.of("album", albums.get(photos.get(e.objectID).albumID));
@@ -201,8 +198,36 @@ public class NewsfeedController{
 			LOG.warn("Returning an empty friends feed for user {}", self.user.id);
 			return new PaginatedList<>(List.of(), cache.total, offset, count);
 		}catch(SQLException x){
+			friendsNewsFeedCache.remove(cacheKey);
 			throw new InternalServerErrorException(x);
+		}catch(RuntimeException x){
+			// A failure while filling the cache leaves it half-updated (offset advanced, entries not added),
+			// so every later request would silently get an empty page. Start over next time instead.
+			friendsNewsFeedCache.remove(cacheKey);
+			throw x;
 		}
+	}
+
+	/**
+	 * Albums in the friends feed come from two kinds of owner: a friend's own album (user-level privacy
+	 * setting) or a group album a friend was tagged in (group access and the group's photos feature).
+	 */
+	private Set<Long> getInaccessibleAlbumIDs(User self, Collection<PhotoAlbum> albums) {
+		Map<Integer, User> owners = context.getUsersController().getUsers(albums.stream().map(a -> a.ownerID).filter(id -> id > 0).collect(Collectors.toSet()));
+		Map<Integer, Group> ownerGroups = context.getGroupsController().getGroupsByIdAsMap(albums.stream().map(a -> a.ownerID).filter(id -> id < 0).map(id -> -id).collect(Collectors.toSet()));
+		return albums.stream()
+				.filter(a -> {
+					if (a.ownerID < 0) {
+						Group g = ownerGroups.get(-a.ownerID);
+						if (g == null || g.photosState == GroupFeatureState.DISABLED)
+							return true;
+						return g.accessType != Group.AccessType.OPEN && !context.getPrivacyController().canUserAccessGroupContent(self, g);
+					}
+					User owner = owners.get(a.ownerID);
+					return owner == null || !context.getPrivacyController().checkUserPrivacy(self, owner, a.viewPrivacy);
+				})
+				.map(a -> a.id)
+				.collect(Collectors.toSet());
 	}
 
 	private static EnumSet<NewsfeedEntry.Type> getFriendsFeedTypesForFilter(EnumSet<FriendsNewsfeedTypeFilter> filter){
@@ -281,20 +306,16 @@ public class NewsfeedController{
 			if(friendStatus!=FriendshipStatus.FRIENDS && friendStatus!=FriendshipStatus.FOLLOWING)
 				throw new UserActionNotAllowedException();
 			Instant startOfDay=timestamp.atZone(timeZone).toLocalDate().atStartOfDay(timeZone).toInstant();
-			if(type==NewsfeedEntry.Type.ADD_PHOTO){
+			if (type == NewsfeedEntry.Type.ADD_PHOTO || type == NewsfeedEntry.Type.PHOTO_TAG) {
 				List<NewsfeedEntry> entries=NewsfeedStorage.getFriendsGroupedEntries(author.id, startFrom, type, startOfDay, 0, 1000).list;
 				Set<Long> needPhotos=entries.stream().map(e->e.objectID).collect(Collectors.toSet());
 				if(!needPhotos.isEmpty()){
 					Map<Long, Photo> photos=context.getPhotosController().getPhotosIgnoringPrivacy(needPhotos);
 					Set<Long> needAlbums=photos.values().stream().map(p->p.albumID).collect(Collectors.toSet());
 					Map<Long, PhotoAlbum> albums=context.getPhotosController().getAlbumsIgnoringPrivacy(needAlbums);
-					Map<Integer, User> owners=context.getUsersController().getUsers(albums.values().stream().map(a->a.ownerID).filter(id->id>0).collect(Collectors.toSet()));
-					Set<Long> inaccessibleAlbums=albums.values().stream()
-							.filter(a->!context.getPrivacyController().checkUserPrivacy(self, owners.get(a.ownerID), a.viewPrivacy))
-							.map(a->a.id)
-							.collect(Collectors.toSet());
+					Set<Long> inaccessibleAlbums = getInaccessibleAlbumIDs(self, albums.values());
 					entries=new ArrayList<>(entries);
-					entries.removeIf(e->!photos.containsKey(e.objectID) || inaccessibleAlbums.contains(photos.get(e.objectID).albumID));
+					entries.removeIf(e -> !photos.containsKey(e.objectID) || !albums.containsKey(photos.get(e.objectID).albumID) || inaccessibleAlbums.contains(photos.get(e.objectID).albumID));
 				}
 				int total=entries.size();
 				if(offset>=total)
@@ -311,8 +332,8 @@ public class NewsfeedController{
 	// region Groups feed
 
 	public PaginatedList<NewsfeedEntry> getGroupsFeed(Account self, EnumSet<GroupsNewsfeedTypeFilter> filter, ZoneId timeZone, int startFrom, int offset, int count){
+		GroupsFeedCacheKey cacheKey = new GroupsFeedCacheKey(self.user.id, EnumSet.copyOf(filter));
 		try{
-			GroupsFeedCacheKey cacheKey=new GroupsFeedCacheKey(self.user.id, EnumSet.copyOf(filter));
 			CachedFeed cache;
 			synchronized(this){
 				cache=groupsNewsFeedCache.get(cacheKey);
@@ -415,7 +436,12 @@ public class NewsfeedController{
 			LOG.warn("Returning an empty groups feed for user {}", self.user.id);
 			return new PaginatedList<>(List.of(), cache.total, offset, count);
 		}catch(SQLException x){
+			groupsNewsFeedCache.remove(cacheKey);
 			throw new InternalServerErrorException(x);
+		}catch(RuntimeException x){
+			// Same as in the friends feed: a half-filled cache would hide the whole feed until it is evicted
+			groupsNewsFeedCache.remove(cacheKey);
+			throw x;
 		}
 	}
 

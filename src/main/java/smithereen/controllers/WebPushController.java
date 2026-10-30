@@ -50,6 +50,7 @@ import smithereen.model.comments.Comment;
 import smithereen.model.comments.CommentableContentObject;
 import smithereen.model.feed.CommentsNewsfeedObjectType;
 import smithereen.model.feed.NewsfeedEntry;
+import smithereen.model.groups.GroupFeatureState;
 import smithereen.model.notifications.PushNotificationType;
 import smithereen.model.notifications.RealtimeNotification;
 import smithereen.model.notifications.RealtimeNotificationSettingType;
@@ -357,12 +358,18 @@ public class WebPushController {
 			case ADD_PHOTO, PHOTO_TAG -> {
 				Photo photo = context.getPhotosController().getPhotoIgnoringPrivacy(objectID);
 				PhotoAlbum album = context.getPhotosController().getAlbumIgnoringPrivacy(photo.albumID);
+				// A tag in a group's album: visible to whoever can see the group's photos, not governed by a user privacy setting
+				Group albumGroup = album.ownerID < 0 ? context.getGroupsController().getGroupOrThrow(-album.ownerID) : null;
 				User albumOwner = album.ownerID == author.id ? author : album.ownerID > 0 ? context.getUsersController().getUserOrThrow(album.ownerID) : null;
 				String url = photo.getURL();
 				yield new FeedItem(type + ":" + photo.id, Set.of(author.id, photo.authorID), (l, tz) -> new Message(author.getFullName(),
 						l.get(type == NewsfeedEntry.Type.ADD_PHOTO ? "push_feed_added_photo" : "push_feed_tagged_in_photo", Map.of("album", album.title, "gender", author.gender)),
 						url, avatarURL(author)),
-						recipient -> albumOwner == null || context.getPrivacyController().checkUserPrivacy(recipient, albumOwner, album.viewPrivacy));
+						recipient -> {
+							if (albumGroup != null)
+								return albumGroup.photosState != GroupFeatureState.DISABLED && (albumGroup.accessType == Group.AccessType.OPEN || context.getPrivacyController().canUserAccessGroupContent(recipient, albumGroup));
+							return context.getPrivacyController().checkUserPrivacy(recipient, albumOwner, album.viewPrivacy);
+						});
 			}
 			case BOARD_TOPIC -> {
 				BoardTopic topic = context.getBoardController().getTopicIgnoringPrivacy(objectID);
