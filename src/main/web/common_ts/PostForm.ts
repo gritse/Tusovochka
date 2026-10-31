@@ -264,8 +264,46 @@ class PostForm{
 		return !!(userConfig.uploads && userConfig.uploads.audioEnabled);
 	}
 
+	// iOS greys out mp3 and other audio files in the Files picker when the filter is just audio/*,
+	// so the audio filter also lists the types and extensions the server can decode
+	private static readonly AUDIO_EXTENSIONS = ["mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "aiff", "aif", "caf", "wma", "mka", "weba"];
+	private static readonly VIDEO_EXTENSIONS = ["mp4", "m4v", "mov", "webm", "mkv", "avi", "3gp", "mpg", "mpeg", "ts", "flv", "wmv"];
+	private static readonly IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif"];
+
+	private static audioAccept():string {
+		return "audio/*,audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a,audio/aac,audio/wav,audio/x-wav,audio/flac,audio/ogg,audio/opus,audio/aiff,audio/x-aiff,audio/x-caf,audio/x-ms-wma,audio/webm,"
+			+ PostForm.AUDIO_EXTENSIONS.map(ext => "." + ext).join(",");
+	}
+
 	private static uploadAccept():string {
-		return "image/*"+(PostForm.videoUploadsEnabled() ? ",video/*" : "")+(PostForm.audioUploadsEnabled() ? ",audio/*" : "");
+		return "image/*"+(PostForm.videoUploadsEnabled() ? ",video/*" : "")+(PostForm.audioUploadsEnabled() ? "," + PostForm.audioAccept() : "");
+	}
+
+	private static fileExtension(name:string):string {
+		var dot = name ? name.lastIndexOf(".") : -1;
+		return dot == -1 ? "" : name.substring(dot + 1).toLowerCase();
+	}
+
+	// "image", "video" or "audio" from the MIME type the browser reports, or from the file name when it reports
+	// none: iOS gives some files picked from the Files app an empty type
+	private static fileKind(f:File):string {
+		var type = f.type || "";
+		if (type.indexOf("image/") == 0)
+			return "image";
+		if (type.indexOf("video/") == 0)
+			return "video";
+		if (type.indexOf("audio/") == 0)
+			return "audio";
+		if (type && type != "application/octet-stream")
+			return null;
+		var ext = PostForm.fileExtension(f.name);
+		if (PostForm.IMAGE_EXTENSIONS.indexOf(ext) != -1)
+			return "image";
+		if (PostForm.VIDEO_EXTENSIONS.indexOf(ext) != -1)
+			return "video";
+		if (PostForm.AUDIO_EXTENSIONS.indexOf(ext) != -1)
+			return "audio";
+		return null;
 	}
 
 	// The accept filter decides which picker a phone opens, so each attach menu item sets its own
@@ -288,8 +326,14 @@ class PostForm{
 		LayerManager.getInstance().dismissByID("photoAttach");
 		for(var i=0;i<files.length;i++){
 			var f=files[i];
-			if(f.type.indexOf("image/")==0 || (PostForm.videoUploadsEnabled() && f.type.indexOf("video/")==0) || (PostForm.audioUploadsEnabled() && f.type.indexOf("audio/")==0)){
-				this.uploadFile(f, f.name);
+			var kind = PostForm.fileKind(f);
+			if (kind == "image" || (kind == "video" && PostForm.videoUploadsEnabled()) || (kind == "audio" && PostForm.audioUploadsEnabled())) {
+				// The server reads the kind from the part's Content-Type, which the browser takes from the blob's type,
+				// so a file whose kind was guessed from its name gets that type before it is uploaded
+				var blob:Blob = f;
+				if (!f.type || f.type == "application/octet-stream")
+					blob = f.slice(0, f.size, kind + "/" + PostForm.fileExtension(f.name));
+				this.uploadFile(blob, f.name);
 			}
 		}
 	}
@@ -726,7 +770,7 @@ class PostForm{
 			opts.push({label: lang("attach_menu_video_upload"), onclick: () => this.openFilePicker("video/*")});
 		}
 		if (this.canAddAttachment("audio") && PostForm.audioUploadsEnabled()) {
-			opts.push({label: lang("attach_menu_audio_upload"), onclick: () => this.openFilePicker("audio/*")});
+			opts.push({label: lang("attach_menu_audio_upload"), onclick: () => this.openFilePicker(PostForm.audioAccept())});
 		}
 		if(this.canAddAttachment("poll") && !this.pollLayout && !this.isMobileComment){
 			opts.push({label: lang("attach_menu_poll"), onclick: this.showPollLayout.bind(this)});
