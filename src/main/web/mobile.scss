@@ -344,6 +344,12 @@ select{
 	.postContent:not(:empty)+.repostHeader, .postAttachments:not(:empty)+.repostHeader{
 		margin-top: 8px;
 	}
+	.repostUnavailable {
+		margin: 8px 0;
+		padding: 8px 12px;
+		border-radius: 8px;
+		background: $wallCommentSeparator;
+	}
 	.postActions{
 		border-top: solid 1px $wallCommentSeparator;
 		.like{

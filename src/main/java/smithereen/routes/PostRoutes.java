@@ -380,9 +380,10 @@ public class PostRoutes{
 				fromLayer=false;
 			}
 			RenderedTemplateResponse model=new RenderedTemplateResponse(templateName, req).with("post", postVM);
-			HashSet<Integer> needUsers=new HashSet<>();
-			PostViewModel.collectActorIDs(List.of(postVM), needUsers, null);
-			model.with("users", ctx.getUsersController().getUsers(needUsers));
+			HashSet<Integer> needUsers=new HashSet<>(), needGroups = new HashSet<>();
+			PostViewModel.collectActorIDs(List.of(postVM), needUsers, needGroups);
+			model.with("users", ctx.getUsersController().getUsers(needUsers))
+					.with("groups", ctx.getGroupsController().getGroupsByIdAsMap(needGroups));
 			HashSet<Long> needApps=new HashSet<>();
 			PostViewModel.collectAppIDs(List.of(postVM), needApps);
 			model.with("apps", ctx.getAppsController().getAppsByIDs(needApps));
@@ -1073,6 +1074,8 @@ public class PostRoutes{
 		Post post=ctx.getWallController().getPostOrThrow(safeParseInt(req.params(":postID")));
 		if(!requireAccount(req, resp))
 			return "";
+		// Refuse up front instead of letting the user write a comment that then can't be posted
+		ctx.getWallController().enforceCanRepost(sessionInfo(req).account.user, ctx.getWallController().getRepostTarget(post));
 		RenderedTemplateResponse model=new RenderedTemplateResponse("repost_form", req);
 		model.with("repostedPost", post)
 				.with("users", ctx.getUsersController().getUsers(Set.of(post.authorID)));

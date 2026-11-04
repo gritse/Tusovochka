@@ -98,7 +98,8 @@ public class NotificationsRoutes{
 				.collect(Collectors.toMap(c->c.post.id, Function.identity()));
 
 		ctx.getWallController().populateReposts(self.user, posts.values(), 2);
-		PostViewModel.collectActorIDs(posts.values(), needUsers, null);
+		HashSet<Integer> needGroups = new HashSet<>();
+		PostViewModel.collectActorIDs(posts.values(), needUsers, needGroups);
 		HashSet<Long> needApps=new HashSet<>();
 		PostViewModel.collectAppIDs(posts.values(), needApps);
 
@@ -107,6 +108,7 @@ public class NotificationsRoutes{
 		Map<Long, BoardTopic> topics=ctx.getBoardController().getTopicsIgnoringPrivacy(needTopics);
 
 		model.with("users", users)
+				.with("groups", ctx.getGroupsController().getGroupsByIdAsMap(needGroups))
 				.with("apps", ctx.getAppsController().getAppsByIDs(needApps))
 				.with("posts", posts)
 				.with("photos", photos)
