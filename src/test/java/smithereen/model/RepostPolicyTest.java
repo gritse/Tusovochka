@@ -4,8 +4,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import smithereen.model.RepostPolicy.Candidate;
+import smithereen.model.RepostPolicy.Verdict;
 import smithereen.model.groups.GroupBanStatus;
 import smithereen.model.groups.GroupFeatureState;
+import smithereen.model.objects.Actor;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -18,7 +21,7 @@ public class RepostPolicyTest {
 		return u;
 	}
 
-	private static User userHidingOthersPosts(int id, PrivacySetting.Rule rule) {
+	private static User userWithOthersPostsVisibleTo(int id, PrivacySetting.Rule rule) {
 		User u = user(id);
 		PrivacySetting setting = new PrivacySetting();
 		setting.baseRule = rule;
@@ -49,9 +52,24 @@ public class RepostPolicyTest {
 		return c;
 	}
 
+	private static Verdict checkPost(Post post, Actor owner) {
+		return RepostPolicy.check(new Candidate(post, post, owner));
+	}
+
+	private static Verdict checkComment(Post comment, Post topLevel, Actor owner) {
+		return RepostPolicy.check(new Candidate(comment, topLevel, owner));
+	}
+
+	// --- posts on users' walls
+
 	@Test
-	public void ownPostOnOwnWall() {
-		assertTrue(RepostPolicy.canBeReposted(post(10, ALICE, ALICE), null, user(ALICE)));
+	public void ownPostOnOwnWallIsAllowed() {
+		assertEquals(Verdict.ALLOWED, checkPost(post(10, ALICE, ALICE), user(ALICE)));
+	}
+
+	@Test
+	public void ownersSettingDoesNotAffectTheirOwnPosts() {
+		assertEquals(Verdict.ALLOWED, checkPost(post(10, ALICE, ALICE), userWithOthersPostsVisibleTo(ALICE, PrivacySetting.Rule.NONE)));
 	}
 
 	@Test
@@ -61,100 +79,138 @@ public class RepostPolicyTest {
 				continue;
 			Post p = post(10, ALICE, ALICE);
 			p.privacy = privacy;
-			assertFalse(RepostPolicy.canBeReposted(p, null, user(ALICE)), privacy.toString());
+			assertEquals(Verdict.NOT_PUBLIC, checkPost(p, user(ALICE)), privacy.toString());
 		}
 	}
 
 	@Test
-	public void deletedOrMissingIsRefused() {
-		Post p = post(10, ALICE, ALICE);
-		p.deleted = true;
-		assertFalse(RepostPolicy.canBeReposted(p, null, user(ALICE)));
-		assertFalse(RepostPolicy.canBeReposted(null, null, user(ALICE)));
-		assertFalse(RepostPolicy.canBeReposted(post(10, ALICE, ALICE), null, null));
+	public void wallToWallPostIsAllowedWhenEveryoneSeesOthersPosts() {
+		Post p = post(10, ALICE, BOB);
+		assertEquals(Verdict.ALLOWED, checkPost(p, user(ALICE)), "the default is everyone");
+		assertEquals(Verdict.ALLOWED, checkPost(p, userWithOthersPostsVisibleTo(ALICE, PrivacySetting.Rule.EVERYONE)));
 	}
 
 	@Test
-	public void ownerMustMatchThePostsWall() {
-		assertFalse(RepostPolicy.canBeReposted(post(10, ALICE, ALICE), null, user(BOB)));
-		assertFalse(RepostPolicy.canBeReposted(post(10, -GROUP, ALICE), null, user(ALICE)));
+	public void wallToWallPostIsRefusedWhenOwnerLimitsOthersPosts() {
+		Post p = post(10, ALICE, BOB);
+		for (PrivacySetting.Rule rule : PrivacySetting.Rule.values()) {
+			if (rule == PrivacySetting.Rule.EVERYONE)
+				continue;
+			assertEquals(Verdict.OWNER_HIDES_OTHERS_POSTS, checkPost(p, userWithOthersPostsVisibleTo(ALICE, rule)), rule.toString());
+		}
 	}
+
+	// --- posts on group walls
 
 	@Test
 	public void openGroupPostIsAllowed() {
-		assertTrue(RepostPolicy.canBeReposted(post(10, -GROUP, ALICE), null, group(Group.AccessType.OPEN)));
+		assertEquals(Verdict.ALLOWED, checkPost(post(10, -GROUP, ALICE), group(Group.AccessType.OPEN)));
 	}
 
 	@Test
 	public void closedAndPrivateGroupPostsAreRefused() {
-		assertFalse(RepostPolicy.canBeReposted(post(10, -GROUP, ALICE), null, group(Group.AccessType.CLOSED)));
-		assertFalse(RepostPolicy.canBeReposted(post(10, -GROUP, ALICE), null, group(Group.AccessType.PRIVATE)));
+		assertEquals(Verdict.GROUP_NOT_OPEN, checkPost(post(10, -GROUP, ALICE), group(Group.AccessType.CLOSED)));
+		assertEquals(Verdict.GROUP_NOT_OPEN, checkPost(post(10, -GROUP, ALICE), group(Group.AccessType.PRIVATE)));
 	}
 
 	@Test
-	public void bannedGroupOrDisabledWallIsRefused() {
+	public void bannedGroupPostIsRefused() {
 		for (GroupBanStatus status : GroupBanStatus.values()) {
+			if (status == GroupBanStatus.NONE)
+				continue;
 			Group g = group(Group.AccessType.OPEN);
 			g.banStatus = status;
-			assertEquals(status == GroupBanStatus.NONE, RepostPolicy.canBeReposted(post(10, -GROUP, ALICE), null, g), status.toString());
+			assertEquals(Verdict.GROUP_BANNED, checkPost(post(10, -GROUP, ALICE), g), status.toString());
 		}
+	}
+
+	@Test
+	public void disabledGroupWallIsRefused() {
 		Group g = group(Group.AccessType.OPEN);
 		g.wallState = GroupFeatureState.DISABLED;
-		assertFalse(RepostPolicy.canBeReposted(post(10, -GROUP, ALICE), null, g));
-		g.wallState = GroupFeatureState.ENABLED_CLOSED; // only who can write is restricted, reading is open
-		assertTrue(RepostPolicy.canBeReposted(post(10, -GROUP, ALICE), null, g));
+		assertEquals(Verdict.GROUP_WALL_DISABLED, checkPost(post(10, -GROUP, ALICE), g));
 	}
 
 	@Test
-	public void wallToWallPostDependsOnOwnersSetting() {
-		Post p = post(10, ALICE, BOB);
-		assertTrue(RepostPolicy.canBeReposted(p, null, user(ALICE)), "default is everyone");
-		assertTrue(RepostPolicy.canBeReposted(p, null, userHidingOthersPosts(ALICE, PrivacySetting.Rule.EVERYONE)));
-		for (PrivacySetting.Rule rule : PrivacySetting.Rule.values()) {
-			if (rule == PrivacySetting.Rule.EVERYONE)
-				continue;
-			assertFalse(RepostPolicy.canBeReposted(p, null, userHidingOthersPosts(ALICE, rule)), rule.toString());
-		}
+	public void restrictedGroupWallIsAllowed() {
+		// Only who can write is restricted, everyone can still read
+		Group g = group(Group.AccessType.OPEN);
+		g.wallState = GroupFeatureState.ENABLED_CLOSED;
+		assertEquals(Verdict.ALLOWED, checkPost(post(10, -GROUP, ALICE), g));
 	}
 
-	@Test
-	public void ownersSettingDoesNotAffectTheirOwnPosts() {
-		assertTrue(RepostPolicy.canBeReposted(post(10, ALICE, ALICE), null, userHidingOthersPosts(ALICE, PrivacySetting.Rule.NONE)));
-	}
+	// --- comments
 
 	@Test
 	public void commentFollowsItsTopLevelPost() {
 		Post own = post(10, ALICE, ALICE);
-		assertTrue(RepostPolicy.canBeReposted(comment(11, own, BOB), own, user(ALICE)));
+		assertEquals(Verdict.ALLOWED, checkComment(comment(11, own, BOB), own, userWithOthersPostsVisibleTo(ALICE, PrivacySetting.Rule.NONE)));
 
 		Post wallToWall = post(20, ALICE, BOB);
-		assertTrue(RepostPolicy.canBeReposted(comment(21, wallToWall, BOB), wallToWall, user(ALICE)));
-		assertFalse(RepostPolicy.canBeReposted(comment(21, wallToWall, BOB), wallToWall, userHidingOthersPosts(ALICE, PrivacySetting.Rule.FRIENDS)));
+		assertEquals(Verdict.ALLOWED, checkComment(comment(21, wallToWall, BOB), wallToWall, user(ALICE)));
+		assertEquals(Verdict.OWNER_HIDES_OTHERS_POSTS, checkComment(comment(21, wallToWall, ALICE), wallToWall, userWithOthersPostsVisibleTo(ALICE, PrivacySetting.Rule.FRIENDS)));
 
 		Post groupPost = post(30, -GROUP, BOB);
-		assertTrue(RepostPolicy.canBeReposted(comment(31, groupPost, ALICE), groupPost, group(Group.AccessType.OPEN)));
-		assertFalse(RepostPolicy.canBeReposted(comment(31, groupPost, ALICE), groupPost, group(Group.AccessType.CLOSED)));
+		assertEquals(Verdict.ALLOWED, checkComment(comment(31, groupPost, ALICE), groupPost, group(Group.AccessType.OPEN)));
+		assertEquals(Verdict.GROUP_NOT_OPEN, checkComment(comment(31, groupPost, ALICE), groupPost, group(Group.AccessType.CLOSED)));
 	}
 
 	@Test
-	public void commentIsJudgedOnlyByItsOwnThread() {
-		Post closedGroupPost = post(30, -GROUP, BOB);
-		Post comment = comment(31, closedGroupPost, ALICE);
-		Post unrelated = post(10, ALICE, ALICE);
-		assertFalse(RepostPolicy.canBeReposted(comment, unrelated, user(ALICE)), "another post passed as the thread");
-		Post sameIDOtherWall = post(30, ALICE, ALICE);
-		assertFalse(RepostPolicy.canBeReposted(comment, sameIDOtherWall, user(ALICE)), "thread post on a different wall");
-	}
-
-	@Test
-	public void commentNeedsAVisibleTopLevelPost() {
-		Post own = post(10, ALICE, ALICE);
-		assertFalse(RepostPolicy.canBeReposted(comment(11, own, BOB), null, user(ALICE)), "top-level post missing");
+	public void commentUnderNonPublicPostIsRefused() {
 		Post friendsOnly = post(10, ALICE, ALICE);
 		friendsOnly.privacy = Post.Privacy.FRIENDS_ONLY;
-		assertFalse(RepostPolicy.canBeReposted(comment(11, friendsOnly, BOB), friendsOnly, user(ALICE)));
+		assertEquals(Verdict.NOT_PUBLIC, checkComment(comment(11, friendsOnly, BOB), friendsOnly, user(ALICE)));
+	}
+
+	// --- inputs that don't belong together are a bug in the caller
+
+	@Test
+	public void topLevelPostMustBeThePostItself() {
+		assertThrows(IllegalArgumentException.class, () -> new Candidate(post(10, ALICE, ALICE), post(11, ALICE, ALICE), user(ALICE)));
+	}
+
+	@Test
+	public void commentNeedsItsOwnTopLevelPost() {
+		Post closedGroupPost = post(30, -GROUP, BOB);
+		Post comment = comment(31, closedGroupPost, ALICE);
+		assertThrows(IllegalArgumentException.class, () -> new Candidate(comment, post(10, ALICE, ALICE), user(ALICE)), "another post");
+		assertThrows(IllegalArgumentException.class, () -> new Candidate(comment, post(30, ALICE, ALICE), user(ALICE)), "same ID, other wall");
+		assertThrows(IllegalArgumentException.class, () -> new Candidate(comment, comment, group(Group.AccessType.OPEN)), "the comment itself");
+	}
+
+	@Test
+	public void ownerMustBeTheWallOwner() {
+		assertThrows(IllegalArgumentException.class, () -> new Candidate(post(10, ALICE, ALICE), post(10, ALICE, ALICE), user(BOB)));
+		Post groupPost = post(10, -GROUP, ALICE);
+		assertThrows(IllegalArgumentException.class, () -> new Candidate(groupPost, groupPost, user(ALICE)), "the author is not the owner");
+	}
+
+	@Test
+	public void deletedPostsAreNotCandidates() {
 		Post deleted = post(10, ALICE, ALICE);
 		deleted.deleted = true;
-		assertFalse(RepostPolicy.canBeReposted(comment(11, own, BOB), deleted, user(ALICE)));
+		assertThrows(IllegalArgumentException.class, () -> new Candidate(deleted, deleted, user(ALICE)));
+		Post live = post(10, ALICE, ALICE);
+		assertThrows(IllegalArgumentException.class, () -> new Candidate(comment(11, live, BOB), deleted, user(ALICE)));
+	}
+
+	// --- ofExisting: what callers use when things may be gone
+
+	@Test
+	public void ofExistingIsEmptyWhenSomethingIsGone() {
+		Post live = post(10, ALICE, ALICE);
+		Post deleted = post(10, ALICE, ALICE);
+		deleted.deleted = true;
+		assertTrue(Candidate.ofExisting(deleted, deleted, user(ALICE)).isEmpty(), "deleted post");
+		assertTrue(Candidate.ofExisting(comment(11, live, BOB), null, user(ALICE)).isEmpty(), "top-level post not found");
+		assertTrue(Candidate.ofExisting(comment(11, live, BOB), deleted, user(ALICE)).isEmpty(), "top-level post deleted");
+		assertTrue(Candidate.ofExisting(live, live, null).isEmpty(), "owner not found");
+		assertTrue(Candidate.ofExisting(live, live, user(ALICE)).isPresent());
+	}
+
+	@Test
+	public void ofExistingStillRejectsMismatches() {
+		Post live = post(10, ALICE, ALICE);
+		assertThrows(IllegalArgumentException.class, () -> Candidate.ofExisting(live, live, user(BOB)));
 	}
 }

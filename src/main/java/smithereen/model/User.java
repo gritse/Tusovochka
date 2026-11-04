@@ -32,7 +32,7 @@ import smithereen.util.JsonObjectBuilder;
 import smithereen.util.TranslatableEnum;
 import spark.utils.StringUtils;
 
-public class User extends Actor{
+public final class User extends Actor{
 	public static final long FLAG_SUPPORTS_FRIEND_REQS=1;
 	public static final long FLAG_IDEXABLE=1 << 1;
 	public static final long FLAG_DISCOVERABLE=1 << 2;

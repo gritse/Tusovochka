@@ -22,7 +22,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -628,7 +627,7 @@ public class WallController{
 			}).toList();
 			Map<Integer, PostViewModel> postsByID=allPosts.stream().collect(Collectors.toMap(pvm->pvm.post.id, Function.identity(), (p1, p2)->p1));
 			Map<Integer, UserInteractions> interactions=PostStorage.getPostInteractions(postIDs, self!=null ? self.id : 0);
-			Predicate<PostViewModel> repostability = getRepostability(allPosts, postsByID);
+			Set<Integer> repostablePostIDs = getRepostablePostIDs(allPosts, postsByID);
 
 			for(PostViewModel post:allPosts){
 				UserInteractions ui=interactions.get(post.post.getIDForInteractions());
@@ -642,7 +641,7 @@ public class WallController{
 				else
 					ui.canComment=canComment.getOrDefault(ownerID, true);
 
-				ui.canRepost = repostability.test(post);
+				ui.canRepost = repostablePostIDs.contains(post.post.id);
 
 				if(self==null)
 					continue;
@@ -866,14 +865,14 @@ public class WallController{
 		}
 	}
 
-	@NotNull
 	/**
 	 * Whether {@code post} is a repost that adds nothing of its own (no text, attachments or poll). Sharing such a
 	 * repost shares its original instead, so chains of empty reposts don't build up.
 	 */
 	public static boolean isRepostWithoutOwnContent(Post post) {
-		return post.repostOf != 0 && (post.text == null || TextProcessor.stripHTML(post.text, false).trim().isEmpty())
-				&& (post.attachments == null || post.attachments.isEmpty()) && post.poll == null;
+		boolean hasText = post.text != null && !TextProcessor.stripHTML(post.text, false).isBlank();
+		boolean hasAttachments = post.attachments != null && !post.attachments.isEmpty();
+		return post.repostOf != 0 && !hasText && !hasAttachments && post.poll == null;
 	}
 
 	/**
@@ -885,67 +884,127 @@ public class WallController{
 	}
 
 	/**
-	 * Throws unless {@code self} may share {@code post} to their wall: the post must qualify under
-	 * {@link RepostPolicy}, {@code self} must be able to see it, and neither its author nor the owner of its wall may
-	 * have blocked {@code self}.
+	 * Throws unless {@code self} may share {@code post} to their wall: the post must pass {@link RepostPolicy},
+	 * {@code self} must be able to see it, and neither its author nor the owner of its wall may have blocked
+	 * {@code self}.
 	 */
 	public void enforceCanRepost(@NotNull User self, @NotNull Post post) {
-		Post topLevel = post.getReplyLevel() > 0 ? getPostOrThrow(post.replyKey.getFirst()) : null;
-		Actor owner = getContentAuthorAndOwner(post).owner();
-		if (!RepostPolicy.canBeReposted(post, topLevel, owner))
+		if (post.isDeleted())
+			throw new ObjectNotFoundException();
+		Post topLevel = post.getReplyLevel() > 0 ? getPostOrThrow(post.replyKey.getFirst()) : post;
+		OwnerAndAuthor ownership = getContentAuthorAndOwner(post);
+		RepostPolicy.Candidate candidate = RepostPolicy.Candidate.ofExisting(post, topLevel, ownership.owner())
+				.orElseThrow(ObjectNotFoundException::new);
+		if (RepostPolicy.check(candidate) != RepostPolicy.Verdict.ALLOWED)
 			throw new UserActionNotAllowedException();
+
+		// The reposter must be able to see the post where it is now
 		context.getPrivacyController().enforcePostPrivacy(self, post);
-		ArrayList<Post> visible = new ArrayList<>(List.of(post));
-		context.getPrivacyController().filterPostsForOwnerPrivacy(self, visible);
-		if (visible.isEmpty())
+		ArrayList<Post> visibleOnItsWall = new ArrayList<>(List.of(post));
+		context.getPrivacyController().filterPostsForOwnerPrivacy(self, visibleOnItsWall);
+		if (visibleOnItsWall.isEmpty())
 			throw new UserContentUnavailableException();
-		context.getUsersController().ensureUserNotBlocked(self, context.getUsersController().getUserOrThrow(post.authorID));
-		if (owner.getOwnerID() != post.authorID)
-			context.getUsersController().ensureUserNotBlocked(self, owner);
+
+		// and must not be blocked by its author or by the owner of its wall
+		if (ownership.author() != null)
+			context.getUsersController().ensureUserNotBlocked(self, ownership.author());
+		if (ownership.owner().getOwnerID() != post.authorID)
+			context.getUsersController().ensureUserNotBlocked(self, ownership.owner());
 	}
 
 	/**
-	 * Builds the check behind the share button for a batch of posts, loading the wall owners and top-level posts it
-	 * needs in one go. A repost without a comment gets the button when its original qualifies, because that is what
-	 * sharing it reposts.
+	 * IDs of the posts in {@code posts} that get a share button. A repost without a comment of its own gets one when
+	 * its original qualifies, because sharing it shares the original. The top-level posts and wall owners the check
+	 * needs are loaded for the whole batch at once.
+	 *
+	 * @param knownPosts Posts already loaded, by ID, so their top-level posts don't need fetching.
 	 */
-	private Predicate<PostViewModel> getRepostability(List<PostViewModel> posts, Map<Integer, PostViewModel> knownPosts) {
+	private Set<Integer> getRepostablePostIDs(Collection<PostViewModel> posts, Map<Integer, PostViewModel> knownPosts) {
+		// What each post's share button would repost
 		Map<Integer, Post> targets = new HashMap<>();
 		for (PostViewModel pvm : posts) {
-			if (!isRepostWithoutOwnContent(pvm.post))
-				targets.put(pvm.post.id, pvm.post);
-			else if (pvm.repost != null && pvm.repost.post() != null)
-				targets.put(pvm.post.id, pvm.repost.post().post);
+			Post target = getLoadedRepostTarget(pvm);
+			if (target != null)
+				targets.put(pvm.post.id, target);
 		}
-		Map<Integer, Post> topLevels = new HashMap<>();
-		Set<Integer> needTopLevels = new HashSet<>(), ownerUserIDs = new HashSet<>(), ownerGroupIDs = new HashSet<>();
-		for (Post target : targets.values()) {
-			if (target.getReplyLevel() > 0) {
-				int topLevelID = target.replyKey.getFirst();
-				if (knownPosts.get(topLevelID) instanceof PostViewModel known)
-					topLevels.put(topLevelID, known.post);
-				else
-					needTopLevels.add(topLevelID);
-			}
-			if (target.ownerID > 0)
-				ownerUserIDs.add(target.ownerID);
-			else if (target.ownerID < 0)
-				ownerGroupIDs.add(-target.ownerID);
-		}
-		if (!needTopLevels.isEmpty())
-			topLevels.putAll(getPosts(needTopLevels));
-		Map<Integer, User> ownerUsers = context.getUsersController().getUsers(ownerUserIDs);
-		Map<Integer, Group> ownerGroups = context.getGroupsController().getGroupsByIdAsMap(ownerGroupIDs);
-		return pvm -> {
-			Post target = targets.get(pvm.post.id);
-			if (target == null)
-				return false;
-			Post topLevel = target.getReplyLevel() > 0 ? topLevels.get(target.replyKey.getFirst()) : null;
-			Actor owner = target.ownerID > 0 ? ownerUsers.get(target.ownerID) : ownerGroups.get(-target.ownerID);
-			return RepostPolicy.canBeReposted(target, topLevel, owner);
-		};
+		Map<Integer, Post> topLevels = loadTopLevelPosts(targets.values(), knownPosts);
+		Map<Integer, Actor> owners = loadWallOwners(targets.values());
+
+		Set<Integer> repostable = new HashSet<>();
+		targets.forEach((postID, target) -> {
+			int topLevelID = target.getReplyLevel() > 0 ? target.replyKey.getFirst() : target.id;
+			boolean allowed = RepostPolicy.Candidate.ofExisting(target, topLevels.get(topLevelID), owners.get(target.ownerID))
+					.map(candidate -> RepostPolicy.check(candidate) == RepostPolicy.Verdict.ALLOWED)
+					.orElse(false);
+			if (allowed)
+				repostable.add(postID);
+		});
+		return repostable;
 	}
 
+	/**
+	 * Like {@link #getRepostTarget}, but only from what {@link #populateReposts} already loaded into {@code pvm}.
+	 *
+	 * @return The post to repost, or null when it's a repost without a comment whose original wasn't loaded or is
+	 * unavailable to the viewer.
+	 */
+	private static @Nullable Post getLoadedRepostTarget(PostViewModel pvm) {
+		if (!isRepostWithoutOwnContent(pvm.post))
+			return pvm.post;
+		if (pvm.repost == null || pvm.repost.post() == null)
+			return null;
+		return pvm.repost.post().post;
+	}
+
+	/**
+	 * The top-level post of each of {@code posts}, by ID: the post itself, or for a comment the post it was written
+	 * under. Top-level posts that were not found are missing from the map.
+	 */
+	private Map<Integer, Post> loadTopLevelPosts(Collection<Post> posts, Map<Integer, PostViewModel> knownPosts) {
+		Map<Integer, Post> topLevels = new HashMap<>();
+		Set<Integer> needFetching = new HashSet<>();
+		for (Post post : posts) {
+			if (post.getReplyLevel() == 0) {
+				topLevels.put(post.id, post);
+				continue;
+			}
+			int topLevelID = post.replyKey.getFirst();
+			if (knownPosts.get(topLevelID) instanceof PostViewModel known)
+				topLevels.put(topLevelID, known.post);
+			else
+				needFetching.add(topLevelID);
+		}
+		needFetching.removeAll(topLevels.keySet());
+		if (!needFetching.isEmpty())
+			topLevels.putAll(getPosts(needFetching));
+		return topLevels;
+	}
+
+	/**
+	 * The owners of the walls {@code posts} are on, by owner ID (positive for users, negative for groups, the same as
+	 * {@link Post#ownerID}). Owners that were not found are missing from the map.
+	 */
+	private Map<Integer, Actor> loadWallOwners(Collection<Post> posts) {
+		Set<Integer> userIDs = new HashSet<>(), groupIDs = new HashSet<>();
+		for (Post post : posts) {
+			if (post.ownerID > 0)
+				userIDs.add(post.ownerID);
+			else if (post.ownerID < 0)
+				groupIDs.add(-post.ownerID);
+		}
+		Map<Integer, Actor> owners = new HashMap<>();
+		for (User user : context.getUsersController().getUsers(userIDs).values()) {
+			if (user != null)
+				owners.put(user.getOwnerID(), user);
+		}
+		for (Group group : context.getGroupsController().getGroupsByIdAsMap(groupIDs).values()) {
+			if (group != null)
+				owners.put(group.getOwnerID(), group);
+		}
+		return owners;
+	}
+
+	@NotNull
 	public OwnerAndAuthor getContentAuthorAndOwner(OwnedContentObject post){
 		int ownerID=post.getOwnerID();
 		int authorID=post.getAuthorID();
@@ -1026,17 +1085,23 @@ public class WallController{
 	 * placeholder instead of their content.
 	 *
 	 * @param knownPosts Posts already on the page, which the viewer can see.
-	 * @param topLevels  The fetched top-level posts of comments in {@code posts}.
+	 * @param topLevels  The fetched top-level posts of comments in {@code originals}.
 	 */
-	private List<Post> filterRepostedPostsForViewer(@Nullable User self, Collection<Post> posts, Map<Integer, PostViewModel> knownPosts, Map<Integer, Post> topLevels) {
-		ArrayList<Post> visible = new ArrayList<>(posts);
+	private List<Post> filterRepostedPostsForViewer(@Nullable User self, Collection<Post> originals, Map<Integer, PostViewModel> knownPosts, Map<Integer, Post> topLevels) {
+		ArrayList<Post> visible = new ArrayList<>(originals);
 		visible.removeIf(Post::isDeleted);
+		// The checks a wall applies: the post's own privacy, then whether the viewer may see posts on that wall
 		context.getPrivacyController().filterPostsForPerPostPrivacy(self, visible);
 		context.getPrivacyController().filterPostsForOwnerPrivacy(self, visible);
+		// A comment also needs the post it was written under to be visible
 		visible.removeIf(post -> {
-			if (post.getReplyLevel() == 0 || knownPosts.containsKey(post.replyKey.getFirst()))
+			if (post.getReplyLevel() == 0)
 				return false;
-			Post topLevel = topLevels.get(post.replyKey.getFirst());
+			int topLevelID = post.replyKey.getFirst();
+			if (knownPosts.containsKey(topLevelID))
+				return false; // already on the page, so the viewer can see it
+			Post topLevel = topLevels.get(topLevelID);
+			// A deleted top-level post doesn't hide the comment: the repost header says the post is gone
 			return topLevel != null && !context.getPrivacyController().checkPostPrivacy(self, topLevel);
 		});
 		return visible;
