@@ -380,7 +380,7 @@ public class PostRoutes{
 				fromLayer=false;
 			}
 			RenderedTemplateResponse model=new RenderedTemplateResponse(templateName, req).with("post", postVM);
-			HashSet<Integer> needUsers=new HashSet<>(), needGroups = new HashSet<>();
+			HashSet<Integer> needUsers = new HashSet<>(), needGroups = new HashSet<>();
 			PostViewModel.collectActorIDs(List.of(postVM), needUsers, needGroups);
 			model.with("users", ctx.getUsersController().getUsers(needUsers))
 					.with("groups", ctx.getGroupsController().getGroupsByIdAsMap(needGroups));

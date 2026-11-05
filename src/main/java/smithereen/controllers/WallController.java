@@ -56,6 +56,7 @@ import smithereen.model.admin.UserRole;
 import smithereen.model.apps.ClientApp;
 import smithereen.model.feed.NewsfeedEntry;
 import smithereen.model.friends.FriendshipStatus;
+import smithereen.model.groups.GroupBanStatus;
 import smithereen.model.groups.GroupFeatureState;
 import smithereen.model.media.MediaFileReferenceType;
 import smithereen.model.media.MediaFileUploadPurpose;
@@ -146,9 +147,10 @@ public class WallController{
 			if(inReplyTo!=null){
 				context.getPrivacyController().enforcePostPrivacy(author, inReplyTo);
 			}
-			// Reposts only go to the reposter's own wall
-			if (inReplyTo != null || !(wallOwner instanceof User ownerUser && ownerUser.id == author.id))
-				repost = null;
+			// Reposts only go to the reposter's own wall, and are never comments
+			boolean isOnOwnWall = wallOwner instanceof User ownerUser && ownerUser.id == author.id;
+			if (repost != null && (inReplyTo != null || !isOnOwnWall))
+				throw new UserActionNotAllowedException();
 
 			if (repost != null) {
 				repost = getRepostTarget(repost);
@@ -898,10 +900,9 @@ public class WallController{
 		if (RepostPolicy.check(candidate) != RepostPolicy.Verdict.ALLOWED)
 			throw new UserActionNotAllowedException();
 
-		// The reposter must be able to see the post where it is now
-		context.getPrivacyController().enforcePostPrivacy(self, post);
+		// The reposter must be able to see the wall the post is on (the post itself is public, the policy checked that)
 		ArrayList<Post> visibleOnItsWall = new ArrayList<>(List.of(post));
-		context.getPrivacyController().filterPostsForOwnerPrivacy(self, visibleOnItsWall);
+		context.getPrivacyController().filterPostsForOwnerPrivacy(self, visibleOnItsWall); // removes the post if not
 		if (visibleOnItsWall.isEmpty())
 			throw new UserContentUnavailableException();
 
@@ -920,7 +921,7 @@ public class WallController{
 	 * @param knownPosts Posts already loaded, by ID, so their top-level posts don't need fetching.
 	 */
 	private Set<Integer> getRepostablePostIDs(Collection<PostViewModel> posts, Map<Integer, PostViewModel> knownPosts) {
-		// What each post's share button would repost
+		// Key: the post with the share button; value: what the button would repost
 		Map<Integer, Post> targets = new HashMap<>();
 		for (PostViewModel pvm : posts) {
 			Post target = getLoadedRepostTarget(pvm);
@@ -932,14 +933,24 @@ public class WallController{
 
 		Set<Integer> repostable = new HashSet<>();
 		targets.forEach((postID, target) -> {
-			int topLevelID = target.getReplyLevel() > 0 ? target.replyKey.getFirst() : target.id;
-			boolean allowed = RepostPolicy.Candidate.ofExisting(target, topLevels.get(topLevelID), owners.get(target.ownerID))
-					.map(candidate -> RepostPolicy.check(candidate) == RepostPolicy.Verdict.ALLOWED)
-					.orElse(false);
-			if (allowed)
+			if (isRepostable(target, topLevels, owners))
 				repostable.add(postID);
 		});
 		return repostable;
+	}
+
+	private boolean isRepostable(Post post, Map<Integer, Post> topLevels, Map<Integer, Actor> owners) {
+		int topLevelID = post.getReplyLevel() > 0 ? post.replyKey.getFirst() : post.id;
+		try {
+			return RepostPolicy.Candidate.ofExisting(post, topLevels.get(topLevelID), owners.get(post.ownerID))
+					.map(candidate -> RepostPolicy.check(candidate) == RepostPolicy.Verdict.ALLOWED)
+					.orElse(false);
+		} catch (IllegalArgumentException x) {
+			// An inconsistent row (say, a comment stored with another owner than its post) costs that post its share
+			// button, not the whole page
+			LOG.warn("Can't decide whether post {} can be reposted", post.id, x);
+			return false;
+		}
 	}
 
 	/**
@@ -1044,21 +1055,18 @@ public class WallController{
 				}
 			}
 			if(!needPosts.isEmpty()){
-				Map<Integer, Post> newPosts=getPosts(needPosts);
+				Map<Integer, Post> newPosts = getPosts(needPosts);
 				needPosts.clear();
-				Map<Integer, Post> topLevels=new HashMap<>();
-				for(Post post:newPosts.values()){
-					if(post.getReplyLevel()>0 && !knownPosts.containsKey(post.replyKey.getFirst())){
-						needPosts.add(post.replyKey.getFirst());
-					}
-				}
 				// For comments, get their top-level posts
-				if(!needPosts.isEmpty()){
-					topLevels.putAll(getPosts(needPosts));
+				for (Post post : newPosts.values()) {
+					if (post.getReplyLevel() > 0 && !knownPosts.containsKey(post.replyKey.getFirst()))
+						needPosts.add(post.replyKey.getFirst());
 				}
-				for(Post post:filterRepostedPostsForViewer(self, newPosts.values(), knownPosts, topLevels)){
+				Map<Integer, Post> topLevels = needPosts.isEmpty() ? Map.of() : getPosts(needPosts);
+				// Originals the viewer may not see stay out of knownPosts, so their reposts get the placeholder below
+				for (Post post : filterRepostedPostsForViewer(self, newPosts.values(), knownPosts, topLevels)) {
 					knownPosts.put(post.id, new PostViewModel(post));
-					if(post.getReplyLevel()>0 && topLevels.get(post.replyKey.getFirst()) instanceof Post topLevel)
+					if (post.getReplyLevel() > 0 && topLevels.get(post.replyKey.getFirst()) instanceof Post topLevel)
 						knownPosts.putIfAbsent(topLevel.id, new PostViewModel(topLevel));
 				}
 			}
@@ -1067,9 +1075,11 @@ public class WallController{
 				if(repost!=null){
 					PostViewModel topLevel=repost.post.getReplyLevel()>0 ? knownPosts.get(repost.post.replyKey.getFirst()) : null;
 					post.repost=new PostViewModel.Repost(repost, topLevel);
-					nextReposts.add(repost);
-				}else{
-					post.repostUnavailable=true;
+					// Only a repost has a further level to load; an original would look like one whose original is gone
+					if (repost.post.repostOf != 0)
+						nextReposts.add(repost);
+				} else {
+					post.repostUnavailable = true;
 				}
 			}
 			HashSet<PostViewModel> tmp=reposts;
@@ -1093,6 +1103,13 @@ public class WallController{
 		// The checks a wall applies: the post's own privacy, then whether the viewer may see posts on that wall
 		context.getPrivacyController().filterPostsForPerPostPrivacy(self, visible);
 		context.getPrivacyController().filterPostsForOwnerPrivacy(self, visible);
+		// That check lets through groups that were banned since; their own pages refuse to open, so hide their posts too
+		Set<Integer> groupIDs = visible.stream().filter(Post::isGroupOwner).map(post -> -post.ownerID).collect(Collectors.toSet());
+		Set<Integer> bannedGroupIDs = context.getGroupsController().getGroupsByIdAsMap(groupIDs).values().stream()
+				.filter(group -> group != null && group.banStatus != GroupBanStatus.NONE)
+				.map(group -> group.id)
+				.collect(Collectors.toSet());
+		visible.removeIf(post -> post.isGroupOwner() && bannedGroupIDs.contains(-post.ownerID));
 		// A comment also needs the post it was written under to be visible
 		visible.removeIf(post -> {
 			if (post.getReplyLevel() == 0)
@@ -1101,7 +1118,7 @@ public class WallController{
 			if (knownPosts.containsKey(topLevelID))
 				return false; // already on the page, so the viewer can see it
 			Post topLevel = topLevels.get(topLevelID);
-			// A deleted top-level post doesn't hide the comment: the repost header says the post is gone
+			// A top-level post that wasn't found (deleted) doesn't hide the comment: the repost header says it's gone
 			return topLevel != null && !context.getPrivacyController().checkPostPrivacy(self, topLevel);
 		});
 		return visible;

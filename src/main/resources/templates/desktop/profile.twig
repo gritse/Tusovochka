@@ -170,8 +170,8 @@
 			{% include "profile_module_user_list" with {'users': followingWithTitles, 'headerTitle': L('following'), 'subheaderTitle': L('X_people', {'count': user.followingCount}), 'headerHref': "/users/#{user.id}/following"} %}
 			{% endif %}
 		{% endif %}
-		{% if groups is not empty %}
-			{% include "profile_module_groups" with {'groups': groups, 'headerTitle': L('groups'), 'headerHref': "/users/#{user.id}/groups", 'subheaderTitle': L('X_groups', {'count': groups.size})} %}
+		{% if userGroups is not empty %}
+			{% include "profile_module_groups" with {'groups': userGroups, 'headerTitle': L('groups'), 'headerHref': "/users/#{user.id}/groups", 'subheaderTitle': L('X_groups', {'count': userGroups.size})} %}
 		{% endif %}
 		</div>
 	</div>
