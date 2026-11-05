@@ -290,6 +290,16 @@ MySQL container (`DB_CONTAINER`, default `smdb`), because the web UI can't make 
 NODE_PATH=/path/to/node_modules node dev/reposts.js     # BASE_URL must match the server's domain (localhost:4567)
 ```
 
+Ad blockers hide elements by class names that look like social widgets: Fanboy's Social and Annoyance lists, on by
+default in many blockers, hide every `.shareWrap`, which is why the desktop share button is wrapped in `.repostWrap`.
+To run the same checks as a visitor with such a blocker, download a list and pass it as `ADBLOCK_LIST`; its generic
+hiding rules (`##selector`) are applied to every page, and a share button they hide fails the checks:
+
+```sh
+curl -o /tmp/fanboy-social.txt https://easylist.to/easylist/fanboy-social.txt
+ADBLOCK_LIST=/tmp/fanboy-social.txt NODE_PATH=/path/to/node_modules node dev/reposts.js
+```
+
 1. Yulia's post on her own wall: admin has a share button, shares it with a comment through the box; admin's wall
    shows the comment, Yulia's name in the repost header and her text.
 2. Maria's post in an open group: share button, repost header "Maria ▸ group name" on desktop and mobile, visible logged out.

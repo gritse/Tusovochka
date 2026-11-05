@@ -1730,7 +1730,8 @@ select, .comboBoxW input{
 	right: -35px;
 }
 
-.shareWrap .popover{
+/* Not "shareWrap": ad blockers' social widget lists (Fanboy's Social and Annoyance) hide every element with that class */
+.repostWrap .popover {
 	right: -125px;
 }
 
