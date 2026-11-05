@@ -187,6 +187,7 @@
   "do_share_post": "Share post",
   "do_share_comment": "Share comment",
   "repost_post_done": "This post will appear on your profile and in your friends' and followers' feeds.",
+  "repost_original_unavailable": "The original post was deleted or is not available to you.",
   "repost_comment_done": "This comment will appear on your profile and in your friends' and followers' feeds.",
   "repost_your_comment": "Your comment",
   "liked_by_X_people_short": "{count, plural, one {# liked} other {# liked}}",

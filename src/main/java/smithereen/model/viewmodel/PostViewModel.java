@@ -12,6 +12,10 @@ import smithereen.model.filtering.WordFilter;
 
 public class PostViewModel extends BasePostViewModel<Post, PostViewModel>{
 	public Repost repost;
+	/**
+	 * This post is a repost, but its original is deleted or the viewer may not see it; set by {@code WallController.populateReposts}.
+	 */
+	public boolean repostUnavailable;
 	public WordFilter matchedFilter;
 
 	public PostViewModel(Post post){

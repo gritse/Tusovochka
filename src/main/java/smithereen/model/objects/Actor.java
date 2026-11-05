@@ -7,11 +7,14 @@ import java.sql.SQLException;
 
 import smithereen.Config;
 import smithereen.model.ActorStatus;
+import smithereen.model.Group;
 import smithereen.model.SizedImage;
+import smithereen.model.User;
 import smithereen.model.media.MediaFileRef;
 import spark.utils.StringUtils;
 
-public abstract class Actor extends StoredObject{
+// Sealed so that a switch over a wall owner covers both kinds without a default branch
+public abstract sealed class Actor extends StoredObject permits User, Group{
 	public static final int USERNAME_MAX_LENGTH=64;
 
 	public String username;

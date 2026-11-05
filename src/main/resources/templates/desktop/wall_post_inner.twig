@@ -26,6 +26,8 @@
 		{% set authorID=post.repost.post.post.authorID %}
 		<a href="{{ profileURL(authorID) }}" class="flL avaW">{{ users[authorID] | pictureForAvatar('a', 30) }}</a>
 		<div class="nameW ellipsize"><span class="repostIcon{{ realPost.mastodonStyleRepost ? ' mastodonStyle' : '' }}"></span><a href="{{ profileURL(authorID) }}" class="name">{{ users[authorID] | name }}</a>
+		{%- set repostOwnerID=post.repost.post.post.ownerID %}
+		{%- if post.repost.post.post.replyLevel==0 and repostOwnerID!=authorID %}<span class="postOwnerArrowIcon"></span><a href="{{ profileURL(repostOwnerID) }}" class="name">{{ (repostOwnerID>0 ? users[repostOwnerID] : groups[-repostOwnerID]) | name }}</a>{% endif %}
 		{%- if post.repost.post.post.action=='AVATAR_UPDATE' %} <span class="grayText">{{ L('post_action_updated_avatar', {'gender': users[realPost.authorID].gender}) }}</span>{% endif -%}
 		</div>
 		<div class="ellipsize grayText">
@@ -42,6 +44,8 @@
 	</div>
 	{% if repostDepth<(maxRepostDepth | default(1)) %}{% include "wall_post_inner" with {'post': post.repost.post, 'repostDepth': repostDepth+1, 'repostParent': repostParent} %}{% endif %}
 </div>
+{% elseif post.repostUnavailable %}
+<div class="repost repostUnavailable grayText">{{ L('repost_original_unavailable') }}</div>
 {% endif %}
 {% if post.post.hasContentWarning %}
 </div>

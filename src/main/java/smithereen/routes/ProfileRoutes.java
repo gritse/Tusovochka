@@ -167,6 +167,7 @@ public class ProfileRoutes{
 			PostViewModel.collectAppIDs(pinnedPosts, needApps);
 		}
 		model.with("users", ctx.getUsersController().getUsers(needUsers, true))
+				.with("groups", ctx.getGroupsController().getGroupsByIdAsMap(needGroups))
 				.with("apps", ctx.getAppsController().getAppsByIDs(needApps));
 
 		PaginatedList<User> friends=ctx.getFriendsController().getFriends(user, 0, 6, FriendsController.SortOrder.RANDOM);
@@ -396,7 +397,8 @@ public class ProfileRoutes{
 
 		model.addNavBarItem(user.getFullName(), null, isSelf ? l.get("this_is_you") : null);
 
-		model.with("groups", ctx.getGroupsController().getUserGroups(user, self!=null ? self.user : null, 0, 100).list);
+		// Not "groups": the wall's posts need that name for the map of groups they mention
+		model.with("userGroups", ctx.getGroupsController().getUserGroups(user, self!=null ? self.user : null, 0, 100).list);
 		jsLangKey(req, "yes", "no", "delete_post", "delete_post_confirm", "delete_reply", "delete_reply_confirm", "remove_friend", "cancel", "delete",
 				"mail_tab_compose", "send");
 		Templates.addJsLangForNewPostForm(req);

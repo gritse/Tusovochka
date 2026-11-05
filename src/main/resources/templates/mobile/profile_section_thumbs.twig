@@ -1,5 +1,5 @@
 {# @pebvariable name="actor" type="smithereen.activitypub.objects.Actor" #}
-{% if (photoAlbumCount>0 or (actor.ownerID<0 and canEditGroup)) or actor.followingCount>0 or groups is not empty or (actor.ownerID<0 and actor.boardState!='DISABLED' and (canCreateTopics or boardTopics.list is not empty)) %}
+{% if (photoAlbumCount>0 or (actor.ownerID<0 and canEditGroup)) or actor.followingCount>0 or userGroups is not empty or (actor.ownerID<0 and actor.boardState!='DISABLED' and (canCreateTopics or boardTopics.list is not empty)) %}
 <div class="card profileSectionThumbs">
 {% if (photoAlbumCount>0 or (actor.ownerID<0 and canEditGroup)) and (actor.ownerID>0 or actor.photosState!='DISABLED') %}
 	<a href="{{ actor.typeAndIdForURL }}/albums">
@@ -32,17 +32,17 @@
 		</div>
 	</a>
 {% endif %}
-{% if groups is not empty and actor.ownerID>0 %}
+{% if userGroups is not empty and actor.ownerID>0 %}
 	<a href="{{ actor.typeAndIdForURL }}/groups">
 		<div class="titleW">
 			<div class="title">{{ L('groups') }}</div>
-			<div class="count">{{ groups | length | numberformat }}</div>
+			<div class="count">{{ userGroups | length | numberformat }}</div>
 		</div>
 		<div class="thumb avatarGrid">
-			{% for group in groups | slice(0, min(groups | length, 6)) %}
+			{% for group in userGroups | slice(0, min(userGroups | length, 6)) %}
 			    {{ group | pictureForAvatar('a', 42) }}
 			{% endfor %}
-			{% for i in range(groups | length, 5, 1) %}<div class="placeholder"></div>{% endfor %}
+			{% for i in range(userGroups | length, 5, 1) %}<div class="placeholder"></div>{% endfor %}
 		</div>
 	</a>
 {% endif %}

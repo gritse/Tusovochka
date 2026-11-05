@@ -25,7 +25,7 @@ import smithereen.text.TextProcessor;
 import smithereen.util.TranslatableEnum;
 import spark.utils.StringUtils;
 
-public class Group extends Actor{
+public final class Group extends Actor{
 
 	public int id;
 	public int memberCount, tentativeMemberCount;

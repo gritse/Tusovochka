@@ -277,3 +277,38 @@ does not), either through the UI or with
 8. Nobody is told about their own doing: posting in a group one is a member of, or on a friend's wall, pushes nothing
    to the author. Deleting anything pushes nothing to anyone.
 
+
+## 11. Reposts
+
+Who may share what, what a repost shows, and what each viewer sees once the original stops being public. The rules
+are in `RepostPolicy` (unit tests: `RepostPolicyTest`); the per-viewer check when a repost is displayed is in
+`WallController.populateReposts`. `dev/reposts.js` runs every case below in a browser on a seeded database, logged in
+as the four seeded users, desktop and mobile, and logged out. It reads and adjusts rows through `docker exec` on the
+MySQL container (`DB_CONTAINER`, default `smdb`), because the web UI can't make a post friends-only.
+
+```sh
+NODE_PATH=/path/to/node_modules node dev/reposts.js     # BASE_URL must match the server's domain (localhost:4567)
+```
+
+1. Yulia's post on her own wall: admin has a share button, shares it with a comment through the box; admin's wall
+   shows the comment, Yulia's name in the repost header and her text.
+2. Maria's post in an open group: share button, repost header "Maria ▸ group name" on desktop and mobile, visible logged out.
+3. Dmitry's post on Yulia's wall, while Yulia lets everyone see others' posts: share button, header "Dmitry ▸ Yulia".
+4. Yulia sets "who can see others' posts on my wall" to "only me": no share button on Dmitry's post, the share form
+   and a hand-made request are refused (403). Admin's existing repost keeps its comment but shows "The original post
+   was deleted or is not available to you" to admin and logged-out visitors; Yulia still sees the content. Back to
+   "everyone", the content returns.
+5. Maria's group is made closed after admin shared a post from it: no share button even for members, requests refused;
+   the repost shows the placeholder to non-members, logged out and on mobile, the content to members; neither the
+   repost's own page nor the list of reposts leaks it.
+6. A friends-only post (set in the database): no share button even for its author, requests refused.
+7. A repost without a comment shares its original (`repost_of` points at it), a repost with a comment is shared as itself.
+8. A repost can only go to the reposter's own wall: requests aimed at a group wall (group 1 vs user 1 included),
+   another user's wall or sent as a comment are refused and nothing is posted.
+9. A comment under an open group post can be shared, one under a closed group post can't.
+10. The original is deleted: its reposts show the placeholder (keeping their comments), and an empty repost of it loses
+    its share button.
+11. The group is suspended by staff after a post was shared: the placeholder for everyone, members and staff included,
+    and new reposts are refused.
+12. Notifications, feed, the repost's own page, the reposts list, group pages and profiles load without errors on
+    desktop and mobile; profiles still list the user's groups.

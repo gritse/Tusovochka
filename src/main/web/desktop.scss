@@ -387,6 +387,11 @@ small{
 		padding-left: 8px;
 		border-left: solid 2px $repostBorderLeft;
 	}
+	.repostUnavailable {
+		margin: 5px 0;
+		padding-top: 4px;
+		padding-bottom: 4px;
+	}
 	&.comment{
 		.postAvaWrap{
 			width: 32px;

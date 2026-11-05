@@ -24,7 +24,10 @@
 <div class="repostHeader">
 	{% set authorID=post.repost.post.post.authorID %}
 	<a href="{{ profileURL(authorID) }}" class="flL avaW">{{ users[authorID] | pictureForAvatar('a', 32) }}</a>
-	<div class="nameW ellipsize"><span class="repostIcon{{ realPost.mastodonStyleRepost ? ' mastodonStyle' : '' }}"></span><a href="{{ profileURL(authorID) }}" class="name">{{ users[authorID] | name }}</a></div>
+	<div class="nameW ellipsize"><span class="repostIcon{{ realPost.mastodonStyleRepost ? ' mastodonStyle' : '' }}"></span><a href="{{ profileURL(authorID) }}" class="name">{{ users[authorID] | name }}</a>
+		{%- set repostOwnerID=post.repost.post.post.ownerID %}
+		{%- if post.repost.post.post.replyLevel==0 and repostOwnerID!=authorID %}<span class="postOwnerArrowIcon"></span><a href="{{ profileURL(repostOwnerID) }}" class="name">{{ (repostOwnerID>0 ? users[repostOwnerID] : groups[-repostOwnerID]) | name }}</a>{% endif -%}
+	</div>
 	<div class="ellipsize grayText">
 		{%- if post.repost.post.post.replyLevel>0 -%}
 		{%- if post.repost.topLevel is not null %}
@@ -38,6 +41,8 @@
 	</div>
 </div>
 {% if repostDepth<(maxRepostDepth | default(1)) %}{% include "wall_post_inner" with {'post': post.repost.post, 'repostDepth': repostDepth+1} %}{% endif %}
+{% elseif post.repostUnavailable %}
+<div class="repostUnavailable grayText">{{ L('repost_original_unavailable') }}</div>
 {% endif %}
 {% if post.post.hasContentWarning %}
 </div>
