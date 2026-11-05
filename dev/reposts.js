@@ -4,6 +4,8 @@
 // Usage: NODE_PATH=<dir with playwright> node dev/reposts.js
 // Environment: BASE_URL (default http://localhost:4567, must match the server's domain), DB_CONTAINER (default smdb, the MySQL container from
 //              TESTS.md, used to check stored rows and to make a post friends-only, which the web UI can't do).
+//              ADBLOCK_LIST (optional: a filter list such as Fanboy's Social; its generic hiding rules are applied to
+//              every page, the way an ad blocker would, so a share button they hide fails the checks)
 // Needs the four seeded users (dev/Seeder.java). Each run creates posts and groups, so use a throwaway database.
 const {chromium, devices} = require('playwright');
 const {execFileSync} = require('child_process');
@@ -32,9 +34,30 @@ function newestPostBy(authorID) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Generic element hiding rules ("##selector") of an ad-block filter list, one CSS rule each so an invalid one is dropped alone
+function adblockCSS() {
+	if (!process.env.ADBLOCK_LIST)
+		return null;
+	const fs = require('fs');
+	return fs.readFileSync(process.env.ADBLOCK_LIST, 'utf8').split('\n')
+		.filter(line => line.startsWith('##') && !line.includes(':-abp-') && !line.includes(':has-text'))
+		.map(line => line.slice(2).trim() + '{display:none!important}')
+		.join('\n');
+}
+const blockerCSS = adblockCSS();
+
 let browser;
 async function session(login, mobile) {
 	const context = await browser.newContext(mobile ? {...devices['iPhone 13']} : {viewport: {width: 1280, height: 900}});
+	if (blockerCSS) {
+		await context.addInitScript(css => {
+			document.addEventListener('DOMContentLoaded', () => {
+				const style = document.createElement('style');
+				style.textContent = css;
+				document.head.appendChild(style);
+			});
+		}, blockerCSS);
+	}
 	const page = await context.newPage();
 	page.on('pageerror', e => {
 		console.log('PAGE ERROR (' + (login || 'guest') + ') ' + e.message);
@@ -101,9 +124,10 @@ async function setOthersPostsVisibility(s, rule) {
 	check(r.status == 200, `user ${s.uid}: others' posts on my wall visible to "${rule}"`);
 }
 
+// Visible, not just present: an ad blocker can hide a button that is in the page
 async function hasShareButton(s, postID) {
 	await s.page.goto(base + '/posts/' + postID);
-	return (await s.page.$(`a.share[href$="/posts/${postID}/share"]`)) != null;
+	return await s.page.locator(`a.share[href$="/posts/${postID}/share"]`).first().isVisible();
 }
 
 // Shares a post through the real UI: the share button, the box, the comment field and the submit button

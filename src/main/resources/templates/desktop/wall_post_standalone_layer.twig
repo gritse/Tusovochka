@@ -30,7 +30,7 @@
 		<span class="popoverPlace likePopoverWrap"></span>
 	</span>
 	{% if interactions.canRepost %}
-	<span class="shareWrap" onmouseenter="likeOnMouseChange(this, true)" onmouseleave="likeOnMouseChange(this, false)">
+	<span class="repostWrap" onmouseenter="likeOnMouseChange(this, true)" onmouseleave="likeOnMouseChange(this, false)">
 		<a href="{{ realPost.internalURL }}/share" class="action share popoverButton button tertiary" id="shareButtonPost{{ realPost.id }}_{{ randomID }}" data-ajax-box data-popover-url="{{ realPost.internalURL }}/sharePopover" rel="nofollow">{{ L('share_content') }}</a>
 		<span class="popoverPlace likePopoverWrap"></span>
 	</span>
